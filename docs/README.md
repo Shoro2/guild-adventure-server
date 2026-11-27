@@ -1,7 +1,10 @@
-# docs
+# Technical documentation
 
-How Guild Adventure works, system by system. The documents grew with the work and keep its notes and test results;
-the code is the last word where they differ.
+How Guild Adventure works inside, system by system: for server operators and developers. The documents grew with the
+work and keep its notes and test results; the code is the last word where they differ.
+
+**Playing the game?** The [player guide](../guide/README.md) explains every feature from the player's side, without the
+technical details.
 
 | File | Content |
 |---|---|

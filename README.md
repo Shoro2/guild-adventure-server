@@ -1,7 +1,7 @@
 # Guild Adventure
 
 A guild management game on a World of Warcraft 3.3.5a (build 12340) private server. You play the guild leader. Up
-to 40 guild members are bots ([mod-playerbots](https://github.com/mod-playerbots/mod-playerbots)) that you manage:
+to 39 guild members are bots ([mod-playerbots](https://github.com/mod-playerbots/mod-playerbots)) that you manage:
 where they level, which professions they learn, their talents, their groups and dungeon runs. At any time you can take
 over a bot and play it yourself. The guild starts with three bots and unlocks more as it grows; it keeps playing for a
 while after you log out.
@@ -24,11 +24,21 @@ For a single-player installation on one Windows PC there is a separate repositor
 | `patches/azerothcore` | One patch file against `mod-playerbots/azerothcore-wotlk`, branch `Playerbot`, at the commit in `tools/pins.json` (what each part does: `docs/core-patches.md`) |
 | `patches/mod-playerbots` | Patches for the pinned `mod-playerbots` commit |
 | `tools` | Windows PowerShell scripts that set up, build, configure and start a server; generators and analysis scripts |
-| `docs` | Design and behaviour documentation |
+| `guide` | The player guide: every feature explained from the player's side |
+| `docs` | The technical documentation: how each system works inside, setup, core patches, the addon protocol |
 
 Not included: any client, client file or server data, and the client-side tools of the private development setup
 (a client DLL, a client patcher, an automated client test harness). Without them a bot is taken over through the
 character screen, where you select the bot and enter the world.
+
+## Documentation
+
+The documentation has two parts:
+
+- **[Player guide](guide/README.md)**: how to play, every tab of the window, orders, taking control, progression,
+  storage and gold, professions, talents and fight profiles, dungeons and raids, bot behaviour.
+- **[Technical documentation](docs/README.md)**: how the server works inside, setting up a server, the core patches,
+  the addon protocol, performance.
 
 ## State
 
