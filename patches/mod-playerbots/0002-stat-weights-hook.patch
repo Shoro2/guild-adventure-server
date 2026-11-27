@@ -1,0 +1,53 @@
+diff --git a/src/Mgr/Item/StatsWeightCalculator.cpp b/src/Mgr/Item/StatsWeightCalculator.cpp
+index abc8d0f5..ca430e82 100644
+--- a/src/Mgr/Item/StatsWeightCalculator.cpp
++++ b/src/Mgr/Item/StatsWeightCalculator.cpp
+@@ -281,9 +281,13 @@ int32 StatsWeightCalculator::PickBestRandomPropertyId(uint32 itemId)
+     return bestId;
+ }
+ 
++StatWeightsHook StatsWeightCalculator::basicWeightsHook_ = nullptr;
++
+ void StatsWeightCalculator::GenerateWeights(Player* player)
+ {
+     GenerateBasicWeights(player);
++    if (basicWeightsHook_)
++        basicWeightsHook_(player, stats_weights_);
+     GenerateAdditionalWeights(player);
+     ApplyWeightFinetune(player);
+ }
+diff --git a/src/Mgr/Item/StatsWeightCalculator.h b/src/Mgr/Item/StatsWeightCalculator.h
+index 49b86d25..f9ca568a 100644
+--- a/src/Mgr/Item/StatsWeightCalculator.h
++++ b/src/Mgr/Item/StatsWeightCalculator.h
+@@ -14,6 +14,11 @@
+     ((1 << ITEM_SUBCLASS_WEAPON_AXE) | (1 << ITEM_SUBCLASS_WEAPON_MACE) | (1 << ITEM_SUBCLASS_WEAPON_SWORD) | \
+      (1 << ITEM_SUBCLASS_WEAPON_DAGGER) | (1 << ITEM_SUBCLASS_WEAPON_FIST))
+ 
++// Another module may fill the basic stat weights of a player after playerbots' own, before the talent extras
++// (StatsWeightCalculator::SetBasicWeightsHook). The hook runs where the calculator runs (map threads too).
++#define PLAYERBOTS_STAT_WEIGHTS_HOOK 1
++using StatWeightsHook = void (*)(Player* player, float* weights);
++
+ enum StatsOverflowThreshold
+ {
+     SPELL_HIT_OVERFLOW = 14,
+@@ -42,6 +47,9 @@ public:
+     StatsCollector const* GetCollector() const { return collector_.get(); }
+     float const* GetStatWeights() const { return stats_weights_; }
+ 
++    // Set once at startup (nullptr: playerbots' weights only).
++    static void SetBasicWeightsHook(StatWeightsHook hook) { basicWeightsHook_ = hook; }
++
+     private:
+     void GenerateWeights(Player* player);
+     void GenerateBasicWeights(Player* player);
+@@ -78,6 +86,8 @@ private:
+     float stats_weights_[STATS_TYPE_MAX];
+     bool pvpSpec_ = false;
+     bool exclude_resilience_ = false;
++
++    static StatWeightsHook basicWeightsHook_;
+ };
+ 
+ #endif

@@ -1,0 +1,1896 @@
+#
+# mod-guild-adventure configuration
+#
+# Copy to mod_guild_adventure.conf in the server's configs/modules folder.
+# Design reference: the design log, section 3.7.
+#
+# Bot settings: many of the keys below are also bot settings (docs/bot-settings.md). For those the value here is
+# the default of every guild; the guild leader may override it in game for the whole guild and, for most of them,
+# for a single bot (Settings tab -> Bot behaviour, .ga setting). ".ga settings <character>" lists them.
+#
+
+[worldserver]
+
+#
+#    GuildAdventure.Enable
+#        Description: Enable the Guild Adventure module.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+GuildAdventure.Enable = 1
+
+#
+#    GuildAdventure.StartSlots
+#        Description: Number of bot slots a new adventure guild starts with.
+#        Default:     3
+
+GuildAdventure.StartSlots = 3
+
+#
+#    GuildAdventure.MaxSlots
+#        Description: Maximum number of bot slots a guild can unlock (1-39): with its leader a guild
+#                     is at most 40 people. Must not exceed Playerbots.MaxAddedBots.
+#        Default:     39
+
+GuildAdventure.MaxSlots = 39
+
+#
+#    GuildAdventure.BotAccount.Prefix
+#        Description: Name prefix of the module-owned accounts that hold guild bot
+#                     characters. Each owner gets a pool of these accounts.
+#        Default:     "GABOT"
+
+GuildAdventure.BotAccount.Prefix = "GABOT"
+
+#
+#    GuildAdventure.BotAccount.MaxCharacters
+#        Description: Bot characters per bot account before the module creates the
+#                     next account of the owner's pool. Must not exceed
+#                     CharactersPerRealm (client limit: 10).
+#        Default:     10
+
+GuildAdventure.BotAccount.MaxCharacters = 10
+
+#
+#    GuildAdventure.Guild.NameFormat
+#        Description: Name of the WoW guild the module founds for a new adventure guild. "{}" is
+#                     replaced by the leader's name; the result is cut to 24 characters and must
+#                     pass the core's guild name rules. If it is taken or invalid, found a guild
+#                     yourself: the module links a guild you lead at your next login.
+#        Default:     "{} Adventurers"
+
+GuildAdventure.Guild.NameFormat = "{} Adventurers"
+
+#
+#    GuildAdventure.OfflineWindow.StartMinutes
+#        Description: How long guild bots keep playing after the owner logs out,
+#                     before any renown unlocks.
+#        Default:     60
+
+GuildAdventure.OfflineWindow.StartMinutes = 60
+
+#
+#    GuildAdventure.OfflineWindow.MaxMinutes
+#        Description: Upper limit of the offline window reachable through unlocks.
+#        Default:     480
+
+GuildAdventure.OfflineWindow.MaxMinutes = 480
+
+#
+#    GuildAdventure.Leader.OfflinePlay
+#        Description: A leader with an order (AUTO, LEVEL_ZONE, IDLE, FOLLOW; set in the
+#                     Overview tab's leader panel) plays on in the offline window like the
+#                     guild bots: it stays in the world when the owner logs out, logs in
+#                     again after a worldserver restart inside the window, and logs out when
+#                     the window ends. The owner's own login always takes it over.
+#                     0 = the leader logs out with the owner, also with an order (the design log
+#                     D12); it plays its order only while the owner is online.
+#                     A leader without an order ("Hold position") always logs out with the owner.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Leader.OfflinePlay = 1
+
+#
+#    GuildAdventure.Leader.WatchOnLogin
+#        Description: Logging into a leader with an order does not interrupt its auto mode:
+#                     the client starts in watch mode (the AI plays the leader on, the client
+#                     watches) until the owner presses "Take over" on the control bar
+#                     (or /ga watch, .ga watch off).
+#                     0 - never: a login always gives the owner the controls
+#                     1 - when the leader was playing by itself at the login (offline window,
+#                         after a restart)
+#                     2 - at every login into a leader with an order
+#        Default:     1
+
+GuildAdventure.Leader.WatchOnLogin = 1
+
+#
+#    GuildAdventure.AutoAdvanceDefault
+#        Description: Default for new bots: move on to the next recommended zone
+#                     when the bot out-levels its assigned zone.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.AutoAdvanceDefault = 1
+
+#
+#    GuildAdventure.SwapAllowedInCombat
+#        Description: Allow "take control" while the current character or the
+#                     target bot is in combat.
+#        Default:     0 - (Disabled)
+
+GuildAdventure.SwapAllowedInCombat = 0
+
+#
+#    GuildAdventure.Swap.Path
+#        Description: How the client gets from one character to the other on "take
+#                     control" (docs/take-control.md).
+#                     relog  - Path R: the client goes to the character screen, which
+#                              lists the target; entering the world attaches it.
+#                     reload - Path W (experiment): a loading screen only, no character
+#                              screen. Continents only; refused in instances, on ships
+#                              and zeppelins and in Ebon Hold. Without the client DLL
+#                              (GuildAdventureClient.dll, build 2 or later) the client
+#                              keeps showing the previous character's name and class
+#                              until the next login; the owner is told so.
+#                     switch - Path S (in-world switch): the world reload of Path W, but
+#                              the client DLL (build 4 or later, capability "in-world
+#                              switch") keeps the loaded map: no loading screen. Only
+#                              for a target on the owner's map within
+#                              GuildAdventure.Swap.SeamlessMaxDistance; refused
+#                              elsewhere. A DLL that cannot keep its map at that moment
+#                              falls back to the loading screen of Path W by itself.
+#                     auto   - Path S where it is possible; else Path W where it is
+#                              possible and the owner's client DLL rewrites the
+#                              character record (capability "player record"); Path R
+#                              everywhere else.
+#                     ".ga swap <name> <path>" overrides it per swap.
+#        Default:     "relog"
+
+GuildAdventure.Swap.Path = "relog"
+
+#
+#    GuildAdventure.Swap.SeamlessMaxDistance
+#        Description: How far (yards, same map) the target of an in-world switch (Path S)
+#                     may stand from the character the owner plays. The client keeps only
+#                     the terrain around that character loaded; farther targets take Path W
+#                     (with "auto") or are refused (with "switch").
+#        Default:     533 (one map tile)
+
+GuildAdventure.Swap.SeamlessMaxDistance = 533
+
+#
+#    GuildAdventure.Protocol.MaxMsgPerSecond
+#        Description: Rate limit for addon messages per player (client -> server).
+#        Default:     20
+
+GuildAdventure.Protocol.MaxMsgPerSecond = 20
+
+#
+#    GuildAdventure.EventLog.KeepDays
+#        Description: Days an entry stays in the event log (table ga_event_log). Older rows are
+#                     deleted at startup and a few times a day; each guild's newest 30 entries
+#                     (the feed the addon shows) always stay. 0 keeps everything.
+#        Default:     30
+
+GuildAdventure.EventLog.KeepDays = 30
+
+#
+#    GuildAdventure.Achievements.Share
+#        Description: Achievements are guild-wide: the first guild character (leader or bot) to
+#                     earn one earns it for the guild (renown, event feed), and with this option
+#                     every other guild character gets it in its own achievement list as well,
+#                     quietly (no guild chat line per member), rewards included. Characters that
+#                     are offline get the guild's achievements when they next enter the world.
+#                     Realm-first achievements count for the guild but are never shared.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled, the guild keeps its own list and renown only)
+
+GuildAdventure.Achievements.Share = 1
+
+#
+#    GuildAdventure.Achievements.RenownPerPoint
+#        Description: Renown a new guild achievement gives per achievement point (a 10-point
+#                     achievement gives 10 renown with 1). Achievements worth fewer points (Feats
+#                     of Strength have none) give the ACHIEVEMENT row of ga_renown_source instead
+#                     (world database, 5 by default).
+#        Default:     1
+
+GuildAdventure.Achievements.RenownPerPoint = 1
+
+#
+#    GuildAdventure.Renown.Rate
+#        Description: Multiplier for all renown a guild gains: level-ups, quests, professions
+#                     (ga_renown_source), guild achievements and tiered guild achievements. The
+#                     renown levels themselves are ga_renown_level (world database). A GM's
+#                     .ga renown add is not scaled.
+#        Default:     1.0 - (as the tables say)
+#                     0.5 - (half the renown)
+
+GuildAdventure.Renown.Rate = 1.0
+
+#
+#    GuildAdventure.Milestones.Enable
+#        Description: Tiered guild achievements (docs/guild-management.md "Tiered guild achievements"):
+#                     series per class and race (highest level), per profession (highest skill),
+#                     items in the guild storage, the guild's gold, kills per creature type, quests,
+#                     dungeon and raid runs, each with tiers (world table ga_milestone_template). A
+#                     tier gives its points as guild points (perks) and, times
+#                     GuildAdventure.Achievements.RenownPerPoint, as renown. Tiers above the level cap
+#                     (levels 70 / 80, skill 375 / 450) are shown but cannot be reached.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled: nothing is counted, tiers reached before keep their points)
+
+GuildAdventure.Milestones.Enable = 1
+
+#
+#    GuildAdventure.Milestones.ScanSeconds
+#        Description: How often the levels, profession skills and money of the guild characters in the
+#                     world and the guild storage are read for the series (kills, quests and runs count
+#                     at once). 5 .. 600.
+#        Default:     30
+
+GuildAdventure.Milestones.ScanSeconds = 30
+
+#
+#    GuildAdventure.Milestones.LastTierFactor
+#        Description: The highest tier of a series that the level cap allows gives this many times its
+#                     points (the owner: [quote left out] for the last tier). 1 .. 10.
+#        Default:     2
+
+GuildAdventure.Milestones.LastTierFactor = 2
+
+#
+#    GuildAdventure.Storage.Enable
+#        Description: The guild storage (docs/storage.md): one unlimited store per adventure guild
+#                     that the leader and every bot use. The loot filter puts looted items there,
+#                     the owner takes them out from the addon, crafting takes its materials from it.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled: no storage, the loot filter only keeps, sells, disenchants
+#                         or deletes)
+
+GuildAdventure.Storage.Enable = 1
+
+#
+#    GuildAdventure.Storage.Reagents
+#        Description: Spells of guild characters take the reagents their bags lack from the guild
+#                     storage (core patch CP-7): crafting from the storage, for the bots and for the
+#                     character the owner plays. Class reagents (Arcane Powder, Ankh, ...) work the
+#                     same way when they are in the storage.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+GuildAdventure.Storage.Reagents = 1
+
+#
+#    GuildAdventure.LootFilter.Enable
+#        Description: Items guild characters loot go through the guild's loot filter (rules in the
+#                     addon): kept, sold, disenchanted, deleted or put into the guild storage. Loot
+#                     no rule decides goes into the storage for a character the AI plays and stays
+#                     in the bags of the character the owner plays (both changeable per guild).
+#                     Quest items are never touched; what a bot will use itself (an equipment
+#                     upgrade, its food, drink, potions, ammunition) stays with it.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.LootFilter.Enable = 1
+
+#
+#    GuildAdventure.LootFilter.AllowSell
+#    GuildAdventure.LootFilter.AllowDisenchant
+#    GuildAdventure.LootFilter.AllowDelete
+#        Description: The actions the loot filter may use (keep and "to the storage" always). A
+#                     rule with a disallowed action is skipped. Disenchanting needs no Enchanting
+#                     skill; its materials go into the guild storage.
+#        Default:     1 - (Allowed)
+
+GuildAdventure.LootFilter.AllowSell = 1
+GuildAdventure.LootFilter.AllowDisenchant = 1
+GuildAdventure.LootFilter.AllowDelete = 1
+
+#
+#    GuildAdventure.LootFilter.MaxRules
+#        Description: Loot filter rules per guild (1-100).
+#        Default:     30
+
+GuildAdventure.LootFilter.MaxRules = 30
+
+#
+#    GuildAdventure.LootFilter.SellJunk
+#        Description: Loot no rule of the guild decides is sold at once (the money goes to the
+#                     looter) when it is junk: grey items, white weapons and armour (not what the
+#                     looter puts on itself), and white "junk" misc items. Never
+#                     junk: crafting materials (trade goods and anything a profession recipe
+#                     uses), quest items and items a quest asks for, consumables, bags, ammunition,
+#                     recipes, gems, keys, tools, items without a vendor price, and what a bot will
+#                     use itself. A rule of the guild always decides first. The Storage tab's
+#                     "Sell junk" button sells what of this kind already lies in the storage.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled: junk goes the default way, into the storage or the bags)
+
+GuildAdventure.LootFilter.SellJunk = 1
+
+#
+#    GuildAdventure.LootFilter.SellJunkQuality
+#        Description: The highest quality that counts as junk (GuildAdventure.LootFilter.SellJunk).
+#        Default:     1 - (Grey and white)
+#                     0 - (Grey only)
+
+GuildAdventure.LootFilter.SellJunkQuality = 1
+
+#
+#    GuildAdventure.LootFilter.KeepWornGear
+#        Description: A grey or white weapon or armour piece that a guild character in the world
+#                     would wear (an upgrade for it) is no junk: it goes the default way (the guild
+#                     storage) instead of being sold. Off (the owner, 2026-11-13: grey and white weapons
+#                     and armour are junk): such gear is sold unless the looter puts it on itself.
+#                     The Storage tab's "Sell junk" always leaves what a guild character would wear.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+
+GuildAdventure.LootFilter.KeepWornGear = 0
+
+#
+#    GuildAdventure.Storage.UnwornBound
+#        Description: The guild storage takes a bind-on-pickup weapon or armour piece (green or
+#                     better) that a guild character looted, won in a roll or got as a quest reward
+#                     and never put on (marked when it gets it, the mark ends when the piece is
+#                     equipped), so another guild character can wear it or an enchanter can
+#                     disenchant it. A piece taken out is bound to the character that takes it. What
+#                     was worn and other soulbound items stay refused (for worn gear see
+#                     GuildAdventure.LootFilter.WornGear). Bot setting Storage.UnwornBound
+#                     (docs/storage.md "Soulbound loot").
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+GuildAdventure.Storage.UnwornBound = 1
+
+#
+#    GuildAdventure.LootFilter.WornGear
+#        Description: A green or blue weapon or armour piece an AI-played guild character has worn
+#                     (soulbound, so the guild storage cannot take it) and will not wear again: it is
+#                     disenchanted by the character itself when its Enchanting is high enough (the
+#                     materials go into the guild storage), else sold at its next vendor visit. A
+#                     line per piece in the activity log and in Recent loot. Never its dungeon set,
+#                     a tool, a quest item, a unique piece, a piece the guild keeps a reserve of, one
+#                     that came out of the guild storage, or a blue bind-on-pickup piece of a class
+#                     that could tank or heal while it has no dungeon role. Bot setting
+#                     LootFilter.WornGear (the design log section 7 WG1, docs/storage.md "Gear it has worn").
+#        Default:     1 - (Disenchant or sell)
+#                     2 - (Disenchant only: a character without the skill keeps it)
+#                     0 - (Keep it in the bags)
+
+GuildAdventure.LootFilter.WornGear = 1
+
+#
+#    GuildAdventure.LootFilter.SpareQuestItems
+#        Description: A grey or white quest item in the bags of an AI-played guild character that no quest in its log
+#                     uses and no quest it can still do for experience asks for is sold at its next vendor visit, or
+#                     deleted where it is when no vendor buys it (the owner, 2026-11-18). A quest starter goes only once its
+#                     quest gives no experience any more (done, grey for the character, or the level cap). A line per
+#                     stack in the activity log and in Recent loot. Bot setting LootFilter.SpareQuestItems (the design log
+#                     section 7 QI1, docs/storage.md "Quest items no quest needs").
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+GuildAdventure.LootFilter.SpareQuestItems = 1
+
+#
+#    GuildAdventure.LootFilter.OpenContainers
+#        Description: A bot opens the containers it loots at once (clams, bags of loot, crates; a lockbox when it is a
+#                     rogue with enough Lockpicking); what comes out goes through the loot filter like other loot.
+#                     Bot setting LootFilter.OpenContainers (docs/storage.md "Containers").
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled: containers go the usual way, into the guild storage)
+
+GuildAdventure.LootFilter.OpenContainers = 1
+
+#
+#    GuildAdventure.Storage.OpenContainers
+#        Description: Bots take the containers of the guild storage out, a few every 15 seconds, and open them
+#                     (lockboxes only a rogue with enough Lockpicking). Bot setting Storage.OpenContainers, guild-wide.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+GuildAdventure.Storage.OpenContainers = 1
+
+#
+#    GuildAdventure.Storage.DarkmoonCards
+#        Description: The Darkmoon Faire cards (Ace through Eight of a set) and decks an AI-played guild character
+#                     loots or carries go into the guild storage, in the category Darkmoon cards (docs/storage.md
+#                     "Darkmoon cards"). Bot setting Storage.DarkmoonCards, guild-wide.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+GuildAdventure.Storage.DarkmoonCards = 1
+
+#
+#    GuildAdventure.Storage.ReputationTurnIns
+#        Description: The quest items repeatable reputation quests ask for (the Argent Dawn's Core of Elements, Bone
+#                     Fragments and Scourgestones, the Darkmoon Faire's Evil Bat Eyes) an AI-played guild character
+#                     loots or carries go into the guild storage, in the category Reputation turn-ins, unless a quest in
+#                     its log asks for them (the owner, 2026-11-25; docs/storage.md "Reputation turn-ins"). Bot setting
+#                     Storage.ReputationTurnIns, guild-wide.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+GuildAdventure.Storage.ReputationTurnIns = 1
+
+#
+#    GuildAdventure.Storage.LockboxMinutes
+#        Description: Lockboxes stay in the guild storage, and a rogue whose Lockpicking is high enough, or a
+#                     blacksmith with a skeleton key for it (its bags or the guild storage), takes one out and opens
+#                     it regularly: at most one per character in this many minutes (0 = as many as it can).
+#                     Bot setting Storage.LockboxMinutes, guild-wide.
+#        Default:     2
+
+GuildAdventure.Storage.LockboxMinutes = 2
+
+#
+#    GuildAdventure.Storage.ReserveForDungeons
+#        Description: A reserve per item of the guild storage (set in the Storage tab) is what the bots leave there:
+#                     every automatic take keeps it. Whether what a dungeon run uses out of the storage (elixirs,
+#                     scrolls, stones, oils, scopes) may take into it. Since a run uses those by itself unless the
+#                     leader takes a kind out in the preparation step, the reserve holds for runs by default.
+#                     Bot setting Storage.ReserveForDungeons, guild-wide (docs/storage.md "Reserves").
+#        Default:     0 - (the reserve holds for dungeon runs too)
+#                     1 - (a dungeon run may use the reserve)
+
+GuildAdventure.Storage.ReserveForDungeons = 0
+
+#
+#    GuildAdventure.Shopping.Enable
+#        Description: The guild storage's shopping list (the Storage tab): a minimum stock per item vendors sell. A bot
+#                     at a vendor it visits anyway buys what the guild storage lacks of an item this vendor sells, paid
+#                     from the guild bank, straight into the guild storage; no trip is made for the list. Bot setting
+#                     Shopping.Enable, per guild and per bot (docs/storage.md "Shopping list").
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+GuildAdventure.Shopping.Enable = 1
+
+#
+#    GuildAdventure.Shopping.MaxPerVisit
+#    GuildAdventure.Shopping.MaxPerDay
+#        Description: The most the shopping list may spend of the guild bank at one vendor visit, and in one day
+#                     (server time, UTC), in copper. 0 = nothing is bought. Bot settings, guild-wide.
+#        Default:     50000  (5 gold per visit)
+#                     500000 (50 gold per day)
+
+GuildAdventure.Shopping.MaxPerVisit = 50000
+GuildAdventure.Shopping.MaxPerDay = 500000
+
+#
+#    GuildAdventure.Shopping.FromPurse
+#        Description: What the guild bank cannot pay for the shopping list: 0 = not bought (a line in the activity log),
+#                     1 = the bot pays the rest from its own gold. Bot setting Shopping.FromPurse, guild-wide.
+#        Default:     0
+
+GuildAdventure.Shopping.FromPurse = 0
+
+#
+#    GuildAdventure.AutoLoot.Enable
+#        Description: Guild characters empty their own kills within GuildAdventure.AutoLoot.Range
+#                     yards (and skin them, when they can), and gather the mining and herb nodes in
+#                     reach, without walking to each corpse. Off per guild in the addon as well.
+#                     Not in battleground or dungeon-finder groups, nor in a group with a character
+#                     of someone else.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.AutoLoot.Enable = 1
+
+#
+#    GuildAdventure.AutoLoot.Range
+#        Description: Yards around the character (1-30).
+#        Default:     10
+
+GuildAdventure.AutoLoot.Range = 10
+
+#
+#    GuildAdventure.AutoLoot.ScanIntervalMs
+#        Description: How often each guild character looks for corpses and nodes, in milliseconds
+#                     (0 = every update).
+#        Default:     250
+
+GuildAdventure.AutoLoot.ScanIntervalMs = 250
+
+#
+#    GuildAdventure.AutoLoot.ArmByKill
+#        Description: Corpses are looked for only in the half minute after a creature the character
+#                     (or its group) has the loot of died (docs/performance.md PF-3); nodes to gather
+#                     are looked for at every scan as before. 0 = corpses at every scan, as before.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.AutoLoot.ArmByKill = 1
+
+#
+#    GuildAdventure.Auction.Enable
+#        Description: Guild storage surplus in the auction house. Per item the owner sets in the
+#                     addon's Storage tab how many stay in the storage; what is above goes to the
+#                     auction house in stacks, posted by the guild leader (also while offline),
+#                     every GuildAdventure.Auction.IntervalSeconds. The core mails the proceeds to
+#                     the leader; unsold auctions come back into the storage.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Auction.Enable = 1
+
+#
+#    GuildAdventure.Auction.IntervalSeconds
+#        Description: How often the surplus is posted (10-86400).
+#        Default:     300
+
+GuildAdventure.Auction.IntervalSeconds = 300
+
+#
+#    GuildAdventure.Auction.Hours
+#        Description: Auction duration in hours (1-48).
+#        Default:     24
+
+GuildAdventure.Auction.Hours = 24
+
+#
+#    GuildAdventure.Auction.PriceFactor
+#    GuildAdventure.Auction.MinPrice
+#    GuildAdventure.Auction.MinPrice.TradeGoods
+#        Description: The default price per item when a rule sets none, after the AH bot's own
+#                     valuation (mod-ah-bot-plus): the vendor price, at least MinPrice copper
+#                     (MinPrice.TradeGoods for trade goods), times a quality multiplier (uncommon
+#                     1.8, rare 1.9, epic 2.1), times PriceFactor. Below 1 the price stays under
+#                     what the AH bot's buyer pays at most.
+#        Default:     0.85, 1000, 850
+
+GuildAdventure.Auction.PriceFactor = 0.85
+GuildAdventure.Auction.MinPrice = 1000
+GuildAdventure.Auction.MinPrice.TradeGoods = 850
+
+#
+#    GuildAdventure.Auction.MaxStacksPerItem
+#        Description: Auctions of one item kind a guild has up at the same time (1-100).
+#        Default:     10
+
+GuildAdventure.Auction.MaxStacksPerItem = 10
+
+#
+#    GuildAdventure.Auction.MaxRules
+#        Description: Auction rules per guild (1-1000).
+#        Default:     100
+
+GuildAdventure.Auction.MaxRules = 100
+
+#
+#    GuildAdventure.Auction.SellUnsold
+#        Description: What the guild storage put up in the auction house and did not sell is sold at the vendor
+#                     price when it comes back, the copper into the guild bank (the owner, 2026-11-26: [quote left out]). What the item's
+#                     auction rule keeps, at least its reserve, goes back into the storage; tools, Darkmoon cards,
+#                     reputation turn-ins and what no vendor buys always do. Bot setting Auction.SellUnsold,
+#                     guild-wide.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled: everything comes back into the storage and is put up again)
+
+GuildAdventure.Auction.SellUnsold = 1
+
+#
+#    GuildAdventure.AutoLearnClassSpells
+#        Description: Guild bots learn the spells their class trainer would teach them, where they are and for
+#                     free, on every new level (and on the first plan after a login, so existing bots catch up).
+#                     Off: they travel to the nearest class trainer and pay as before (the owner, 2026-11-12: bots do
+#                     not go to trainers for spells, and the spells cost nothing).
+#        Default:     1 - (Enabled)
+
+GuildAdventure.AutoLearnClassSpells = 1
+
+#
+#    GuildAdventure.Zones.WithinLevelCap
+#        Description: Only zones whose level range ends at or below the server's MaxPlayerLevel are offered: to the
+#                     zone choice of AUTO, to LEVEL_ZONE orders and to the addon's zone list. With MaxPlayerLevel = 60
+#                     that is classic content only (the owner, 2026-11-12): Hellfire Peninsula (58-63) and everything
+#                     after it drop out, so no bot walks through the Dark Portal. Raise MaxPlayerLevel to 70 and the
+#                     Outland zones are back. Off: every zone of ga_zone_template is offered whatever the level cap.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Zones.WithinLevelCap = 1
+
+#
+#    GuildAdventure.Quests.Filter
+#        Description: Characters the AI plays do not take quests the order planner cannot finish (docs/orders.md "Quests
+#                     the bots leave alone"): the hand-checked list in ga_quest_block_template (world database), quests
+#                     that complete through a script event (escort, defence, talk), and quests enough guild bots made
+#                     no progress on (next setting). Needs core patch CP-9. A character its owner plays takes any quest.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Quests.Filter = 1
+
+#
+#    GuildAdventure.Quests.LearnedBlockBots
+#        Description: When the planner has blocked a quest with "no progress" for this many different guild bots, no
+#                     AI-played character takes it any more (the others need not lose 10 to 15 minutes each on it).
+#                     ".ga admin quests forget" drops what was learned, for example after the planner got new abilities.
+#                     0 = never learn.
+#        Default:     2
+
+GuildAdventure.Quests.LearnedBlockBots = 2
+
+#
+#    GuildAdventure.Quests.Escorts
+#        Description: Escort quests (the quest giver walks a waypoint path once the quest is taken) are taken by
+#                     AI-played characters, and the bot follows the NPC until the quest completes or fails
+#                     (docs/orders.md "Escorts"). Off: they are left alone like the other script event quests.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Quests.Escorts = 1
+
+#
+#    GuildAdventure.Quests.Events
+#        Description: Quests whose credit comes from a script event are played by AI-played characters where the world
+#                     database says how (docs/orders.md "Quest events"): a talk with choices (the bot picks the options
+#                     that lead to the credit), an event at the quest giver that starts when the quest is taken (the bot
+#                     stays and fights), an NPC that follows to another NPC (the bot leads it there). Off: they are
+#                     left alone like the other script event quests.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Quests.Events = 1
+
+#
+#    GuildAdventure.Paths.StayOnGround
+#        Description: Characters the AI plays do not start a movement that leaves the ground (docs/orders.md "Paths
+#                     through the ground"). The core's path finder falls back to a straight line when it has no
+#                     walkable path, and a bot on a hill then runs through the rock to a mob in the mine underneath.
+#                     With this on the module checks every such movement for a floor under it and cancels the ones
+#                     without; the order planner sends the bot elsewhere. Needs core patch CP-10. Not checked: ships,
+#                     flying, swimming, ghosts, vehicles, and characters their owner plays.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Paths.StayOnGround = 1
+
+#
+#    GuildAdventure.Roads.Enable
+#        Description: Long walks of the order planner (to a zone, an ender, a dock, an NPC) follow a route over
+#                     mod-playerbots' travel node graph (its playerbots database) instead of one straight navmesh walk
+#                     (docs/orders.md "Routes"). A route avoids links whose hostile creatures are far above the bot:
+#                     a level-11 bot goes from Elwynn Forest to Westfall over the bridge, not through Duskwood.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Roads.Enable = 1
+
+#
+#    GuildAdventure.Roads.MinDistance
+#        Description: Walks longer than this many yards take a route; shorter ones go straight.
+#        Default:     350
+
+GuildAdventure.Roads.MinDistance = 350
+
+#
+#    GuildAdventure.Roads.CostFromLevelsAbove
+#        Description: A route counts longer (12 times from this level on, more beyond) past hostile creatures this many
+#                     levels above the walker, so it goes around them; below that a single creature costs nothing.
+#                     Elites count four levels higher, and groups (Walks.GroupFrom) the walker cannot take are judged
+#                     by the risk model (the owner, 2026-11-14: a way is walked around or refused only for elites,
+#                     creatures four or more levels above the bot and groups it cannot take). (From one level above
+#                     until 2026-11-14.)
+#        Default:     4
+
+GuildAdventure.Roads.CostFromLevelsAbove = 4
+
+#
+#    GuildAdventure.Roads.PairLevels
+#        Description: Each of two hostile creatures that stand together (12 yd) counts this many levels higher on the
+#                     danger map of ways. 0: such a pair is a group that the risk model judges for the walker
+#                     (Walks.GroupFrom). (2 until 2026-11-14.)
+#        Default:     0
+
+GuildAdventure.Roads.PairLevels = 0
+
+#
+#    GuildAdventure.Walks.GroupFrom
+#        Description: Hostile creatures standing together on a way (18 yd) are a group from this many on: a walk past a
+#                     group the risk model says the walker cannot take is refused, and a route goes around it.
+#                     (3 until 2026-11-14.)
+#        Default:     2
+
+GuildAdventure.Walks.GroupFrom = 2
+
+#
+#    GuildAdventure.Walks.MaxLevelsAbove
+#        Description: A walk of a task (to a quest giver, an ender, a flight master, the spot of an objective, an errand)
+#                     is not walked when its way still passes creatures more than this many levels above the bot
+#                     (elites count four levels higher, two creatures that stand together two higher); the target
+#                     waits and the bot takes something else first. Travels to a zone keep their own limit of five
+#                     levels. Groups of three or more are judged by the risk model whatever their level.
+#                     3: the owner, 2026-11-14: [quote left out]. (1 until 2026-11-13, 2 until 2026-11-14.)
+#        Default:     3
+
+GuildAdventure.Walks.MaxLevelsAbove = 3
+
+#
+#    GuildAdventure.Walks.PostponeMinutes
+#        Description: How long such a target is left alone.
+#        Default:     30
+
+GuildAdventure.Walks.PostponeMinutes = 30
+
+#
+#    GuildAdventure.Walks.PlaceCheck
+#        Description: A hand-in or a pickup more than 150 yards away is not walked to when the weakest of the creatures
+#                     around its NPC is more than Walks.MaxLevelsAbove above the bot (a level-3 character does not walk
+#                     from Northshire to Goldshire for a hand-in).
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Walks.PlaceCheck = 1
+
+#
+#    GuildAdventure.Travel.Hearthstone
+#        Description: When a bot uses its hearthstone on a travel (to its zone or to an errand's ender next to its inn).
+#                     the owner, 2026-11-14: the hearthstone only in an emergency, and rather to get to the other continent
+#                     at once or back to Stormwind. The emergency uses (boxed in, no zone it can get to, a refused way to
+#                     its zone or its ship) stay whatever this says.
+#        Default:     1 - (To another continent or a capital of its side: the inn is on another map or in a capital
+#                          city of the bot's side)
+#                     0 - (Only in an emergency: never on a travel)
+#                     2 - (Whenever it shortens a travel: also to an inn on its own continent; until 2026-11-14)
+
+GuildAdventure.Travel.Hearthstone = 1
+
+#
+#    GuildAdventure.Grind.Enable
+#        Description: A bot whose zone has no quest work for it grinds until it has (it never grinds while there is).
+#                     0: it waits instead.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Grind.Enable = 1
+
+#
+#    GuildAdventure.Grind.LevelsBelow
+#    GuildAdventure.Grind.LevelsAbove
+#        Description: What a grinding bot fights: creatures from this many levels below it to this many above. The
+#                     planner picks every target; no elites, nothing with a stronger creature standing next to it.
+#        Default:     3 and 0
+
+GuildAdventure.Grind.LevelsBelow = 3
+GuildAdventure.Grind.LevelsAbove = 0
+
+#
+#    GuildAdventure.Grind.MaxDistance
+#        Description: Grind spots are looked for within this many yards of the bot.
+#        Default:     600
+
+GuildAdventure.Grind.MaxDistance = 600
+
+#
+#    GuildAdventure.Farm.LevelsBelow
+#        Description: The order FARM (docs/orders.md "Farm orders"): a bot farms an item from creatures at least
+#                     this many levels below its own. Bot setting, per guild and per bot.
+#        Default:     4
+
+GuildAdventure.Farm.LevelsBelow = 4
+
+#
+#    GuildAdventure.Farm.GroundRadius
+#    GuildAdventure.Farm.MinSpawns
+#        Description: A hunting ground of a farm order: the creatures that drop the item within GroundRadius yards of
+#                     one spot, an area the bot covers on foot. It needs MinSpawns of them; smaller groups are only
+#                     taken when no place has that many (an item only a few creatures drop). Bot settings.
+#        Default:     80 and 4
+
+GuildAdventure.Farm.GroundRadius = 80
+GuildAdventure.Farm.MinSpawns = 4
+
+#
+#    GuildAdventure.Farm.MaxDistance
+#        Description: Hunting grounds are looked for within this many yards of the bot. 0: anywhere on the land mass
+#                     the bot stands on. Bot setting.
+#        Default:     0
+
+GuildAdventure.Farm.MaxDistance = 0
+
+#
+#    GuildAdventure.Vendor.Trips
+#        Description: When a bot goes to a vendor (selling, repairing, food and drink).
+#                     0 - hub:  at a hub, right after it handed in a quest there (a vendor within 200 yards), and at
+#                               once when it is urgent: bags full, gear about to break, a hunter without ammunition
+#                     1 - full: only when it is urgent
+#                     2 - any:  whenever something is due (the behaviour before 2026-11-12)
+#        Default:     0
+
+GuildAdventure.Vendor.Trips = 0
+
+#
+#    GuildAdventure.Quests.ItemsFromGuild
+#        Description: An item a bot's open quest asks for and the bot does not have comes from the guild when it can:
+#                     out of the guild storage, from another guild character that carries it and does not need it, or
+#                     crafted by a guild character in the world that knows a recipe for it and has the materials (its
+#                     bags and the storage). What a vendor sells is bought from the guild's budget
+#                     (GuildAdventure.Budget.*).
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Quests.ItemsFromGuild = 1
+
+#
+#    GuildAdventure.Quests.AbandonGrey
+#        Description: An AI-played guild character abandons a quest as soon as it is grey for it (its level is at or
+#                     below the level from which creatures are grey for the character). A finished grey quest is
+#                     still handed in when its ender is within 1000 yd, and abandoned otherwise. Also a bot setting
+#                     (per guild and per bot). A quest that failed (a timer, an escort that died) is given back in
+#                     any case and taken again at its giver, once.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Quests.AbandonGrey = 1
+
+#
+#    GuildAdventure.Professions.LearnInPlace
+#        Description: A bot learns the professions of its plan (set by the guild master in the addon), their ranks as
+#                     its level and skill allow and what their trainers teach, where it stands and free, like its
+#                     class spells. A profession that is not in its plan is never learned.
+#                     0: nothing is learned (trainer visits are not built).
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Professions.LearnInPlace = 1
+
+#
+#    GuildAdventure.Professions.GatherDetour
+#        Description: A mining or herb node the bot's skill opens, within this many yards of the bot while it walks, is
+#                     fetched on the way (skinning its kills needs no detour). What it gathers goes to the guild
+#                     storage. 0: only nodes it passes within the auto loot range.
+#        Default:     40
+
+GuildAdventure.Professions.GatherDetour = 40
+
+#
+#    GuildAdventure.Professions.CatchUpGathering
+#        Description: On the autopilot (order AUTO): when a gathering skill of the bot's plan (Mining, Herbalism,
+#                     Skinning) is too low for everything the zone it quests in has (the lowest node or skinnable
+#                     creature there asks for more), the bot catches the skill up first: it goes where its skill can
+#                     gather, as in the profession mode, and does not quest meanwhile. It quests on when the skill
+#                     reaches what the zone's lowest node asks, when it finds nothing to gather for two minutes or
+#                     gains no point in twenty (then it looks again half an hour later). A bot setting, per guild
+#                     and per bot.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+GuildAdventure.Professions.CatchUpGathering = 1
+
+#
+#    GuildAdventure.Professions.CatchUpMinGap
+#        Description: A catch-up of a gathering skill (above) is a journey to where the skill can gather, and back. It
+#                     only begins when the skill is at least this many points below what the lowest node or skinnable
+#                     creature of the bot's zone asks for (the owner, 2026-11-13: no travelling half the world for two
+#                     skinning kills and straight back). With a smaller gap the bot quests on and cannot gather in
+#                     that zone. 0: a catch-up for any gap. A bot setting, per guild and per bot.
+#        Default:     25
+
+GuildAdventure.Professions.CatchUpMinGap = 25
+
+#
+#    GuildAdventure.Professions.FocusBehind
+#        Description: The profession mode (order CRAFT) works on the professions of a bot's plan in turns. A profession
+#                     more than this many points below the highest of them (learned, below its target) is worked on
+#                     alone until it is within that again (the owner, 2026-11-14: [quote left out]): a crafting profession by crafting
+#                     from the bags and the guild storage, with the materials it makes itself first (bars out of the
+#                     storage's ore, a bolt out of its cloth), a gathering profession by gathering. When it can do
+#                     nothing for that profession as things are, its other professions have their turns for two
+#                     minutes. 0: the professions always take turns. A bot setting, per guild and per bot.
+#        Default:     50
+
+GuildAdventure.Professions.FocusBehind = 50
+
+#
+#    GuildAdventure.Professions.GreenMinChance
+#        Description: Crafting and enchanting for skill take orange and yellow recipes first, a green one only when no
+#                     orange or yellow one can be made, never a grey one (the owner, 2026-11-14). A green recipe whose
+#                     chance of a skill point a cast (the core's: it falls in a straight line from the yellow to the
+#                     grey threshold) is below this many percent is not made at all: an enchanter's last copper-rod
+#                     enchantment gave a point in forty casts, with dust disenchanted out of the guild storage for
+#                     each. 0: any green recipe. A bot setting, per guild and per bot.
+#        Default:     20
+
+GuildAdventure.Professions.GreenMinChance = 20
+
+#
+#    GuildAdventure.Professions.CookStock
+#        Description: Cooks make food for the guild (the owner, 2026-11-13: [quote left out]). An AI-played guild character that knows Cooking cooks, from the meat and fish of
+#                     the guild storage and its own bags, the food the guild's characters eat at their levels (a food
+#                     whose required level is at or up to twelve levels below one of them), food with a buff first,
+#                     until the guild storage holds this many of a kind. At a cooking fire: at a hub after a hand-in
+#                     when one is near, in the profession mode with a walk to one. Every material taken out of the
+#                     storage and everything put in leaves a line in the activity log. 0: no food for the guild.
+#                     A bot setting, per guild and per bot.
+#        Default:     40
+
+GuildAdventure.Professions.CookStock = 40
+
+#
+#    GuildAdventure.Professions.CookMinutes
+#        Description: After a look that found nothing to cook for the guild (the stock is there, or no material), a
+#                     cook looks again this many minutes later. A bot setting, per guild and per bot.
+#        Default:     15
+
+GuildAdventure.Professions.CookMinutes = 15
+
+#
+#    GuildAdventure.Professions.ConsumableStock
+#        Description: Crafters make endgame consumables for the guild's dungeon runs (the owner, 2026-11-25: [quote left out]).
+#                     An AI-played guild character whose recipes make what a dungeon run uses (elixirs and flasks,
+#                     scrolls, sharpening stones, weightstones and oils, scopes, healing and mana potions) keeps this
+#                     many of each in the guild storage: of each kind (the same effect) the best its recipes make for
+#                     the guild's highest level, nothing more than 15 item levels below it, out of its bags and the
+#                     storage (what a recipe lacks that it makes itself first, a vendor's material bought from the
+#                     guild's budget, an alchemy lab or forge walked to in the profession mode). After a hand-in at a
+#                     hub and in the profession mode; at the level cap the bot goes into the profession mode for it,
+#                     one crafter of a guild at a time. A dungeon run's characters use what fits them at its start and
+#                     after a wipe. 0: none for the guild. A bot setting, per guild and per bot.
+#        Default:     20
+
+GuildAdventure.Professions.ConsumableStock = 20
+
+#
+#    GuildAdventure.Professions.EnchantScrolls
+#        Description: Enchantments for the guild's gear (the owner, 2026-11-25: [quote left out]). An AI-played
+#                     enchanter writes, on a vellum of the guild storage, the best enchantment it can make now for a
+#                     piece a guild character the AI plays wears (blue quality or better, item level 60 or more; the
+#                     best by the stat weights of the wearer's dungeon role, else of its talents); the scroll goes into
+#                     the guild storage and the wearer puts it on its piece. A vellum the storage lacks is a craft order
+#                     for the guild's scribes. After a hand-in at a hub and in the profession mode; at the level cap the
+#                     enchanter goes into the profession mode for it. A bot setting, per guild and per bot (off for an
+#                     enchanter: it writes none; off for a bot: it puts none on).
+#        Default:     1
+
+GuildAdventure.Professions.EnchantScrolls = 1
+
+#
+#    GuildAdventure.Professions.EnchantMinItemLevel
+#        Description: The item level from which a blue or better piece gets the guild's enchantments
+#                     (Professions.EnchantScrolls; the owner, 2026-11-26: [quote left out]). A bot setting, guild-wide.
+#        Default:     60
+
+GuildAdventure.Professions.EnchantMinItemLevel = 60
+
+#
+#    GuildAdventure.Professions.ProcessAbove
+#    GuildAdventure.Professions.ProcessStock
+#        Description: Raw materials in large amounts are processed for the guild (the owner, 2026-11-25: [quote left out],
+#                     [quote left out]). When the guild storage holds more than ProcessAbove of every raw material a
+#                     recipe takes (vendor materials are bought), an AI-played character that knows the recipe makes
+#                     the processed material out of what lies above ProcessAbove: ore into bars, stone into grinding
+#                     stones, cloth into bolts, bars into parts. ProcessStock caps the stock of a processed material,
+#                     except bars out of ore. After a hand-in at a hub and in the profession mode; at the level cap the
+#                     bot goes into the profession mode for it. Bot settings, per guild and per bot (0 = off / no cap).
+#        Default:     1000, 200
+
+GuildAdventure.Professions.ProcessAbove = 1000
+GuildAdventure.Professions.ProcessStock = 200
+
+#
+#    GuildAdventure.Professions.AmmoStock
+#        Description: Engineers make ammunition for the guild (the owner, 2026-11-22: [quote left out]). An AI-played guild character that knows
+#                     Engineering looks at the guild's hunters with a gun in the world; for each the best ammunition
+#                     its recipes make that the hunter can use is a kind to keep; of such a kind the guild storage
+#                     holds fewer rounds than this, it makes more, out of its bags and the storage (what a recipe
+#                     lacks that it makes itself, blasting powder or bars, first; nothing is bought). After a hand-in
+#                     at a hub and in the profession mode; the hunters take it out of the storage as they take any
+#                     ammunition there. No profession makes arrows in this client. Every material taken out of the
+#                     storage and everything put in leaves a line in the activity log. 0: no ammunition for the guild.
+#                     A bot setting, per guild and per bot.
+#        Default:     5000
+
+GuildAdventure.Professions.AmmoStock = 5000
+
+#
+#    GuildAdventure.Professions.SkillCraftStock
+#        Description: A guild character that crafts for its skill does not make a consumable (a potion, a bandage,
+#                     food, an explosive) while the guild storage holds this many of it, and no ammunition while the
+#                     storage holds GuildAdventure.Professions.AmmoStock rounds of it: it takes another recipe of its
+#                     professions or waits. Nothing is sold or deleted. (Two engineers with Engineering 1-75 made 8400
+#                     Crafted Light Shot for their skill in one round, 2026-11-22.) 0: no cap. A bot setting, per guild
+#                     and per bot.
+#        Default:     200
+
+GuildAdventure.Professions.SkillCraftStock = 200
+
+#
+#    GuildAdventure.Professions.BuyRecipes
+#        Description: Recipes at vendors (the owner, 2026-11-13: [quote left out]). An AI-played guild character
+#                     buys the recipes of its professions that a vendor sells and that it can learn now (the
+#                     profession, its skill, the level and whatever else the recipe asks; not known yet), and learns
+#                     them at once: at every vendor it visits, and with a walk to a vendor within
+#                     Professions.RecipeYards. Recipes in limited supply too. Paid like its gear: the guild bank
+#                     within the guild's budget (Budget.*), the rest from its own money. A line in the activity log
+#                     per purchase, with the price and who paid. A bot setting, per guild and per bot.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+GuildAdventure.Professions.BuyRecipes = 1
+
+#
+#    GuildAdventure.Professions.RecipeMaxPrice
+#        Description: The most one recipe may cost, in copper (10000 = 1 gold). A bot setting.
+#        Default:     10000
+
+GuildAdventure.Professions.RecipeMaxPrice = 10000
+
+#
+#    GuildAdventure.Professions.RecipeYards
+#        Description: A bot walks to a vendor this many yards near that sells a recipe it can learn and pay (looked
+#                     for once a minute, as for gear). 0: only at vendors it visits anyway. A bot setting.
+#        Default:     300
+
+GuildAdventure.Professions.RecipeYards = 300
+
+#
+#    GuildAdventure.Professions.DisenchantSurplus
+#        Description: An enchanter of the guild disenchants surplus crafted gear of the guild storage by itself, at its
+#                     profession looks (at a hub after a hand-in, in the profession mode), at most three pieces per
+#                     look, each named in the activity log; the materials go into the guild storage. Surplus is a
+#                     green or blue weapon or armour piece that a profession recipe makes and that
+#                       - nobody of the guild in the world can put on (a required profession, class, level, armour
+#                         kind): every copy goes, these first;
+#                       - lies there more often than guild characters would wear it: the copies beyond that go, one
+#                         always stays.
+#                     The same pieces come first when an enchanter needs dust or essences for a recipe
+#                     (DisenchantForOrders). A bot setting, per guild and per bot (the enchanter's).
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+GuildAdventure.Professions.DisenchantSurplus = 1
+
+#
+#    GuildAdventure.Professions.CraftAtHub
+#    GuildAdventure.Professions.CraftBatch
+#        Description: At a hub, right after a quest was handed in, the bot crafts what still gives skill in a planned
+#                     profession from its bags and the guild storage: the recipe whose skill point costs the least
+#                     material, at most CraftBatch casts per visit.
+#        Default:     1 - (Enabled) and 5
+
+GuildAdventure.Professions.CraftAtHub = 1
+GuildAdventure.Professions.CraftBatch = 5
+
+#
+#    GuildAdventure.Professions.CraftGear
+#        Description: At a hub after a hand-in (when nothing gives skill), and in the profession mode, a bot crafts one
+#                     piece of equipment that one of the guild's AI-played characters would put on (mod-playerbots'
+#                     rating; itself first), from its bags and the guild storage. The piece goes into the guild
+#                     storage, where its wearer takes it. When nobody would level in anything it can make, a piece
+#                     that improves the dungeon set of a tank or healer (GuildAdventure.DungeonRoles) is made instead;
+#                     it ends in that character's role store. At most one piece every five minutes per crafter, and none
+#                     while such a piece already lies in the storage. It uses the recipe's materials out of the guild
+#                     storage, so it is off until the guild leader switches it on (bot setting, per guild or per bot).
+#                     The piece whose wearer gains most is made. What it lacks comes first: a material the crafter has
+#                     a recipe for is made out of the storage (bars out of ore, bolts, cured hides), a vendor's material
+#                     (thread, salt, dye) is bought within 300 yd from the guild's budget, and an anvil or forge within
+#                     200 yd of the hub is walked to.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+
+GuildAdventure.Professions.CraftGear = 0
+
+#
+#    GuildAdventure.Professions.CraftOrders
+#    GuildAdventure.Professions.DisenchantForOrders
+#        Description: Craft orders (the addon's Storage tab, "Craft orders"): the guild leader orders "make N x item",
+#                     and a bot that knows a recipe for it makes it on its next town trip (a vendor visit, a hand-in
+#                     at a hub; also in the profession mode) from its bags and the guild storage; the result goes
+#                     into the guild storage. Materials a vendor sells are bought at a vendor visit from the guild's
+#                     budget (GuildAdventure.Budget.*); a tool the recipe asks for is made first when the bot can.
+#                     DisenchantForOrders: when an order lacks dust or essences, an enchanter turns green and blue
+#                     weapons and armour of the guild storage that nobody of the guild would wear into their
+#                     materials (at most three per town trip; each one is named in the activity log). Both are bot
+#                     settings.
+#                     Whatever a character the AI plays makes with a recipe (for an order, for skill, on request)
+#                     goes into the guild storage when its crafting has ended; a tool, an item for its own quest and
+#                     a piece of gear it puts on stay with it.
+#        Default:     1 - (Enabled) and 1 - (Enabled)
+
+GuildAdventure.Professions.CraftOrders = 1
+GuildAdventure.Professions.DisenchantForOrders = 1
+
+#
+#    GuildAdventure.BotGuildChat.MinSeconds
+#    GuildAdventure.BotGuildChat.MaxSeconds
+#        Description: Guild chat of guild characters the AI plays (playerbots' lines about loot, quests, kills and their
+#                     answers to each other) reaches the owner's client at most once per pause; after each line shown
+#                     a new pause between MinSeconds and MaxSeconds starts, the lines in between are not shown (the
+#                     bots still hear them). What the owner and the character he plays say, the module's own messages
+#                     and guild achievement lines are never held back. MinSeconds = 0 shows every line.
+#                     (the owner, 2026-11-12: the bots should say something at most every 30-60 seconds.)
+#        Default:     30, 60
+
+GuildAdventure.BotGuildChat.MinSeconds = 30
+GuildAdventure.BotGuildChat.MaxSeconds = 60
+
+#
+#    GuildAdventure.Fight.SelfHealBelow
+#        Description: A character the AI plays that knows a healing spell heals itself in a fight when its health
+#                     falls below this percentage: a paladin (after a Hammer of Justice on what hits it, when that
+#                     is ready), a priest outside Shadowform, a shaman, a druid in no form. mod-playerbots' damage
+#                     rotations do not heal (a retribution paladin ended its fights at a third of its health with
+#                     full mana). In a rest such a character without food heals itself the same way.
+#        Default:     45 - (percent of health; 0 = never)
+
+GuildAdventure.Fight.SelfHealBelow = 45
+
+#
+#    GuildAdventure.Fight.PotionBelowHealth
+#    GuildAdventure.Fight.PotionBelowMana
+#        Description: Potions in a fight (the owner, 2026-11-13: [quote left out]). A character the AI
+#                     plays drinks a healing potion in a fight below PotionBelowHealth percent health, and, using
+#                     mana, a mana potion below PotionBelowMana percent mana while its target still has more than
+#                     a quarter of its health. The best potion it can use: what it carries, or one piece taken out
+#                     of the guild storage at that moment when that has a better one (GuildAdventure.Storage.
+#                     Supply.Potions). The game allows one potion per fight. Not a druid in a form. Bot settings.
+#        Default:     35, 15 - (percent; 0 = never)
+
+GuildAdventure.Fight.PotionBelowHealth = 35
+GuildAdventure.Fight.PotionBelowMana = 15
+
+#
+#    GuildAdventure.Fight.ConsecrationMinFoes
+#        Description: A paladin the AI plays casts Consecration only when at least this many foes in a fight stand
+#                     within its eight yards, in the open world and in dungeons, whatever its talents (the owner,
+#                     2026-11-14: [quote left out]). 1 = whenever its rotation
+#                     would. A bot setting (guild and bot).
+#        Default:     2
+
+GuildAdventure.Fight.ConsecrationMinFoes = 2
+
+#
+#    GuildAdventure.Fight.Interrupt
+#        Description: A guild character the AI plays interrupts a spell a foe of its fight casts (its target or a
+#                     creature that attacks it) whenever its class's interrupt is ready and the foe is in reach (the owner,
+#                     2026-11-23: [quote left out]): Kick,
+#                     Counterspell, Wind Shear, Mind Freeze, Silence, Silencing Shot, a bear's Bash, Shield Bash with a
+#                     shield, Pummel (a warrior changes to Berserker Stance for it when the rage it keeps through the
+#                     change pays for it). Only casts the game lets be interrupted. A bot setting (guild and bot).
+#        Default:     1
+
+GuildAdventure.Fight.Interrupt = 1
+
+#
+#    GuildAdventure.Fight.TemplatesByDefault
+#        Description: A guild character the AI plays whose fight profile slot is empty fights by the fight profile
+#                     template of its class, talent tree and role (the owner, 2026-11-27: [quote left out]; docs/fight-profiles.md section 12): the templates imported from the wowbot335
+#                     fight classes and the module's own for tanks and healers. In a dungeon or raid group a tank (by
+#                     its talents) plays the tank template, a healer the healer template; a spec without a template keeps
+#                     mod-playerbots' rotation. 0 = mod-playerbots' rotation for every bot without a profile of its own.
+#                     A bot setting (guild and bot).
+#        Default:     1
+
+GuildAdventure.Fight.TemplatesByDefault = 1
+
+#
+#    GuildAdventure.Rest.Enable
+#    GuildAdventure.Rest.BelowHealth
+#    GuildAdventure.Rest.BelowMana
+#    GuildAdventure.Rest.UntilHealth
+#    GuildAdventure.Rest.UntilMana
+#    GuildAdventure.Rest.MaxSeconds
+#    GuildAdventure.Rest.SaferPlaceYards
+#    GuildAdventure.Rest.AirAfterSeconds
+#        Description: Rest between fights (docs/orders.md "Rest and provisions"). A guild character the AI plays
+#                     (AUTO, LEVEL_ZONE, IDLE) that is out of combat below BelowHealth percent health or, using
+#                     mana, below BelowMana percent mana stops, eats and drinks what it carries and only goes on at
+#                     UntilHealth and UntilMana. mod-playerbots alone eats below 45 % health only, drinks only
+#                     with water in the bags and starts the next fight whatever its health. Without food or drink
+#                     the bot sits and waits for its own regeneration up to the Until values; such a rest ends
+#                     after three times MaxSeconds once it is back above the Below values. A fight ends a rest at once.
+#                     SaferPlaceYards: a bot does not sit down in a camp or where something hostile walks about.
+#                     With a hostile creature or spawn within 30 yards it first walks to the quietest of sixteen
+#                     spots around it (up to this many yards away, with a path, on the ground); 0 = it rests
+#                     where it stands.
+#                     Nobody sits down in the water: a wet bot that needs a rest goes to dry land first (up to 70
+#                     yards), or goes on without a rest. AirAfterSeconds: a bot whose head has been under water
+#                     this long (the core lets a character drown after WaterBreath.Timer, 180 s) goes ashore to
+#                     breathe; 0 = never.
+#        Default:     1, 65, 40, 85, 75, 60, 40, 90
+
+GuildAdventure.Rest.Enable = 1
+GuildAdventure.Rest.BelowHealth = 65
+GuildAdventure.Rest.BelowMana = 40
+GuildAdventure.Rest.UntilHealth = 85
+GuildAdventure.Rest.UntilMana = 75
+GuildAdventure.Rest.MaxSeconds = 60
+GuildAdventure.Rest.SaferPlaceYards = 40
+GuildAdventure.Rest.AirAfterSeconds = 90
+
+#
+#    GuildAdventure.Rest.BeforeWalk
+#        Description: Before a walk of more than 60 yards past hostile creatures of about its level a character
+#                     the AI plays eats and drinks up to this percentage of health and mana, although it is above
+#                     BelowHealth / BelowMana (a level-17 warrior set out at 80 % health through a gnoll camp and
+#                     died). 0: a character rests only below those thresholds, and before a fight its own fights
+#                     say it could not afford otherwise (the owner, 2026-11-13: [quote left out]: 285 of 646 rests in one live window were
+#                     rests before a walk, at 90 %).
+#        Default:     0 - (off)
+#                     90 - (as it was from 2026-11-13 02:00 to 08:00)
+
+GuildAdventure.Rest.BeforeWalk = 0
+
+#
+#    GuildAdventure.Pull.Careful
+#        Description: Careful pulls (the owner, 2026-11-13: [quote left out]). A character the AI plays turns to a creature
+#                     of the kind it is after that stands alone when one is near. One that stands with others is
+#                     pulled out to the character: a class that fights in melee opens with a ranged spell or its
+#                     ranged weapon from a distance and waits for the creature, or, without either, walks just
+#                     into the creature's sight and a few steps back with it. Only what would join the fight at
+#                     that place counts for the pull check. 0: the character walks up to its target as before.
+#        Default:     1 - (enabled)
+#                     0 - (disabled)
+
+GuildAdventure.Pull.Careful = 1
+
+#
+#    GuildAdventure.Provisions.MinLevel
+#    GuildAdventure.Provisions.Stack
+#    GuildAdventure.Provisions.DrinkStack
+#    GuildAdventure.Provisions.HubYards
+#    GuildAdventure.Provisions.TripWhenLow
+#    GuildAdventure.Provisions.MinMoney
+#    GuildAdventure.Provisions.BudgetPercent
+#    GuildAdventure.Provisions.RestockBelow
+#        Description: Food and drink. A bot of level MinLevel or more with at least MinMoney copper buys food (and
+#                     drink, using mana) at every vendor it visits, up to Stack pieces of food and DrinkStack of
+#                     drink (a caster drinks after nearly every fight: a level-50 mage without drink rested 70 %
+#                     of its time), the best kind for its level that it can pay, for at most BudgetPercent of its
+#                     money per visit. Shopping
+#                     belongs to a hub: below half of that it goes to a vendor within HubYards that sells what
+#                     it lacks (looked for every three minutes, so after a hand-in in a town), chosen among all
+#                     vendors by what they sell. TripWhenLow = 1: it also walks to the nearest such vendor from
+#                     the field when it carries fewer than RestockBelow pieces (at most once per ten minutes;
+#                     while it still has some only within 400 yards, out of them wherever the risk rules allow).
+#                     With 0 a bot without provisions simply rests longer until it comes to a hub. Below MinLevel
+#                     nothing of the kind is bought (the first levels need no food; a hunter still buys its
+#                     ammunition).
+#        Default:     8, 20, 40, 150, 0, 100, 50, 4
+
+GuildAdventure.Provisions.MinLevel = 8
+GuildAdventure.Provisions.Stack = 20
+GuildAdventure.Provisions.DrinkStack = 40
+
+#
+#    GuildAdventure.Provisions.TripWhenOut
+#        Description: A character that uses mana and holds no drink at all walks to the nearest vendor that sells some,
+#                     from wherever it is, like a hunter without ammunition (casters without water spent half of
+#                     their time resting: three of them 2019 of 3984 seconds in one window). 0: drink is only bought
+#                     at a hub, as food is. A mage conjures its water and food itself in a rest, whatever this says.
+#                     No trip while the guild storage holds drink the character can use: it drinks from there, a piece
+#                     at a time, until it comes to a town, where it buys a stack whatever the storage holds. With none
+#                     in its bags and none in the storage it goes at once: the rest that finds nothing to drink ends
+#                     its task.
+#        Default:     1 - (enabled)
+#                     0 - (disabled)
+#
+#    GuildAdventure.Provisions.TripWhenOutYards
+#        Description: How far that trip goes at most (straight line, yards). A vendor further away waits until the
+#                     character comes to a hub. 0: as far as it takes (up to 3000 yards).
+#        Default:     0
+
+GuildAdventure.Provisions.TripWhenOut = 1
+GuildAdventure.Provisions.TripWhenOutYards = 0
+
+#
+#    GuildAdventure.Provisions.ConjureBelow
+#        Description: A mage makes its own water and food (the owner, 2026-11-13: [quote left out]). From the level it knows Conjure Water (4) and Conjure
+#                     Food (6) it buys none of that kind and takes none out of the guild storage. With fewer
+#                     pieces than this in its bags it stops where nothing hostile stands within 25 yards (not in
+#                     the saddle, not on a ship, not while it leads a quest's NPC) and casts the highest rank it
+#                     knows until it carries twice as many; in a rest it conjures first and then drinks. Conjured
+#                     pieces never go into the guild storage and cannot be sold. A bot setting.
+#        Default:     4 - (pieces; 0 = it conjures only in a rest in which it has none)
+
+GuildAdventure.Provisions.ConjureBelow = 4
+
+#
+#    GuildAdventure.Ammo.HunterStock
+#    GuildAdventure.Ammo.HunterStockBelow20
+#    GuildAdventure.Ammo.HunterStockBelow5
+#        Description: The arrows or bullets a hunter the AI plays stocks up to at a vendor and carries at most, from
+#                     level 20, below level 20 and below level 5 (rounds). No purchase goes beyond it (mod-playerbots
+#                     would buy a hunter eight stacks at every vendor), and what a character carries over it is sold at
+#                     vendor price, the worst kind first (most ammunition below level 40 has no vendor price: it is
+#                     deleted). Ammunition never goes into the guild storage from a character's bags: only what a
+#                     guild character made is stored. A hunter takes the best ammunition for its weapon out of the
+#                     guild storage and buys none while the storage holds some for it.
+#        Default:     2000, 1000, 200
+#
+#    GuildAdventure.Ammo.RestockBelow
+#        Description: A hunter with fewer rounds than this walks to the nearest vendor that sells its ammunition, from
+#                     wherever it is. Above it a hunter tops up at a vendor it visits anyway and at a vendor within
+#                     GuildAdventure.Ammo.TopUpYards of a hub it has come to after a hand-in.
+#        Default:     100
+#
+#    GuildAdventure.Ammo.OthersStacks
+#        Description: Stacks of ammunition a character of any other class with a bow, crossbow or gun carries at most.
+#        Default:     1
+#
+#    GuildAdventure.Ammo.TopUpYards
+#        Description: How near a vendor that sells a hunter's ammunition has to stand for a top-up at a hub or on a
+#                     vendor trip (yards).
+#        Default:     200
+
+GuildAdventure.Ammo.HunterStock = 2000
+GuildAdventure.Ammo.HunterStockBelow20 = 1000
+GuildAdventure.Ammo.HunterStockBelow5 = 200
+GuildAdventure.Ammo.RestockBelow = 100
+GuildAdventure.Ammo.OthersStacks = 1
+GuildAdventure.Ammo.TopUpYards = 200
+GuildAdventure.Provisions.HubYards = 150
+GuildAdventure.Provisions.TripWhenLow = 0
+GuildAdventure.Provisions.MinMoney = 100
+GuildAdventure.Provisions.BudgetPercent = 50
+GuildAdventure.Provisions.RestockBelow = 4
+
+#
+#    GuildAdventure.ActivityLog.Fights
+#        Description: One line per fight (duration, number of foes, health and mana at its start and end, won or
+#                     died) and per rest in the activity log (logs\GuildAdventure.log). The status line of every
+#                     five minutes counts fights, rests and deaths either way.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.ActivityLog.Fights = 1
+
+#
+#    GuildAdventure.Storage.Supply.Provisions
+#    GuildAdventure.Storage.Supply.Potions
+#    GuildAdventure.Storage.Supply.Bandages
+#    GuildAdventure.Storage.Supply.Scrolls
+#    GuildAdventure.Storage.Supply.Elixirs
+#    GuildAdventure.Storage.Supply.Gear
+#        Description: Characters the AI plays take what they need out of the guild storage (the owner, 2026-11-12:
+#                     [quote left out]; 2026-11-13: [quote left out]). Consumables are taken one piece at the moment
+#                     of use, never as a stock, and each piece is a line of the activity log. Provisions: the
+#                     best food or drink for the level when the bot eats or drinks in a rest and carries none
+#                     (what it carries is used up first); while the storage has some it buys none at vendors (a
+#                     vendor is what is left when the storage has none). Potions: the healing or mana potion of a fight
+#                     (GuildAdventure.Fight.PotionBelowHealth / .PotionBelowMana). Bandages: a character with
+#                     First Aid bandages itself at the start of a rest for its health, with the best bandage its
+#                     skill allows. Scrolls and Elixirs: while a bot works on a task with fights (a quest
+#                     objective, grinding, an escort, a quest event, or following its squad; not a farm order,
+#                     not in a dungeon, where the leader's ticks count) it uses the best scroll of its main stat
+#                     (strength, agility or intellect by class and the way it fights) and the best battle and
+#                     guardian elixir that help it, when it lacks the effect; looked at once a minute. A mage
+#                     takes no water or food it conjures itself. Gear: the weapon or armour
+#                     piece mod-playerbots rates best for the bot among the upgrades for one place (hands, ranged,
+#                     each armour slot) is taken and put on, out of combat, at most three places per minute; a
+#                     piece it cannot wear goes back at once, what it wore before goes through the loot filter
+#                     (into the storage, as a rule). docs/storage.md "Supplies for the bots".
+#                     Elixirs are off by default: the owner named scrolls, and in the first round with elixirs on
+#                     30 bots used 55 of them in 22 minutes. A scroll is used at most once per its own duration
+#                     per bot (a death does not cost a second one), and neither a scroll nor an elixir is taken
+#                     while something on the bot does not stack with it (the core's spell groups).
+#        Default:     1, 1, 1, 1, 0, 1
+
+GuildAdventure.Storage.Supply.Provisions = 1
+GuildAdventure.Storage.Supply.Potions = 1
+GuildAdventure.Storage.Supply.Bandages = 1
+GuildAdventure.Storage.Supply.Scrolls = 1
+GuildAdventure.Storage.Supply.Elixirs = 0
+GuildAdventure.Storage.Supply.Gear = 1
+
+#
+#    GuildAdventure.Gear.Buy.Enable
+#    GuildAdventure.Gear.Buy.NearYards
+#    GuildAdventure.Gear.FillEmptySlots
+#    GuildAdventure.Gear.WarnGap
+#        Description: Gear from vendors, the exception beside what a bot finds and what the guild storage holds
+#                     (docs/orders.md "Gear and the guild's budget"). At every vendor it visits an AI-played
+#                     character buys the weapon and the armour pieces this vendor sells that mod-playerbots rates
+#                     an upgrade for it, the best per place on the body (at most three per visit), and puts them
+#                     on. NearYards: it also walks to a vendor this near that sells it such a piece (looked for
+#                     every five minutes, the vendor chosen by the risk rules); 0 = only vendors it visits anyway.
+#                     Nothing is bought at a distance. What a piece may cost and who pays: the budget, below.
+#                     FillEmptySlots: armour in the bags goes on where the bot wears nothing, whatever its kind
+#                     (mod-playerbots alone only puts on the armour kind of the class). WarnGap: a bot of level 10
+#                     or more whose weapon (the main hand of a warrior, paladin, rogue, shaman or death knight, the
+#                     bow or gun of a hunter, the wand of a mage, priest or warlock) or whose body armour on
+#                     average is this many item levels or more below its level is reported: a line in the
+#                     activity log and an event of the guild, at most once per bot and half an hour; 0 = never.
+#        Default:     1, 300, 1, 8
+
+GuildAdventure.Gear.Buy.Enable = 1
+GuildAdventure.Gear.Buy.NearYards = 300
+GuildAdventure.Gear.FillEmptySlots = 1
+GuildAdventure.Gear.WarnGap = 8
+
+#
+#    GuildAdventure.Budget.ItemPercent
+#    GuildAdventure.Budget.BotAllowance
+#    GuildAdventure.Budget.MemberPercent
+#        Description: The budget for vendor gear and quest items (the owner, 2026-11-12: the leader sets it; one item
+#                     may not cost more than x %, and every bot has a fixed gold budget; 2026-11-13: the guild's
+#                     part comes out of the WoW guild bank, an empty guild bank pays nothing). The buyer pays
+#                     MemberPercent of its own money at most; the guild bank pays the rest, at most ItemPercent
+#                     of its money for one item and BotAllowance copper for one guild character over its whole
+#                     life (what it has paid for each is kept in ga_bot_budget). Every purchase the guild bank
+#                     pays a part of is an event of the guild. ItemPercent or BotAllowance 0: the guild bank pays
+#                     nothing; a bot then buys only what its own share covers.
+#        Default:     10, 10000 (1 gold), 50
+
+GuildAdventure.Budget.ItemPercent = 10
+GuildAdventure.Budget.BotAllowance = 10000
+GuildAdventure.Budget.MemberPercent = 50
+
+#
+#    GuildAdventure.Guild.TaxPercent
+#        Description: The guild tax (the owner, 2026-11-13: the leader sets how many % of the bots' income go
+#                     into the guild bank automatically; 2026-11-14: [quote left out]). This share of every copper a roster bot gets (looted coin, quest rewards,
+#                     what it sells, junk the loot filter sells, mail and trade money from outside the guild) is
+#                     held back at the moment of the gain and booked into the WoW guild bank by itself, a moment
+#                     later, one activity log line per gain ("guild bank ... guild tax 50% of 10s 4c Hunterbm got:
+#                     looted coin"). Not taxed, being no income: the guild bank's own gold (its part of a purchase,
+#                     a withdrawal from the guild bank), the auction house's refunds of a bid, and money handed
+#                     over within the guild (Guild.TaxHandovers). The guild leader pays no tax, whoever plays it
+#                     (the owner, 2026-11-14). Bot setting Guild.TaxPercent (the leader's value per guild).
+#        Default:     10 (0 = no tax)
+
+GuildAdventure.Guild.TaxPercent = 10
+
+#
+#    GuildAdventure.Unlocks.PayFrom
+#        Description: Who pays for an unlock that costs gold (the Progression tab's Buy, bot slots 10 / 15 / 25 / 40;
+#                     ga_unlock_template.gold_cost). 0: the WoW guild bank. 1: the guild bank, and what it lacks the
+#                     guild leader's own money (the leader must be in the world). 2: the guild leader's own money.
+#                     Every purchase is an event of the guild and an activity log line. Bot setting Unlocks.PayFrom
+#                     (the leader's value per guild).
+#        Default:     0
+
+GuildAdventure.Unlocks.PayFrom = 0
+
+#    GuildAdventure.Guild.TaxHandovers
+#        Description: Money a bot gets by trade or mail from the owner's own characters or another character of
+#                     the guild: taxed too (1) or untaxed, being no income (0: it was taxed when it was earned).
+#                     Bot setting Guild.TaxHandovers (per guild).
+#        Default:     0
+
+GuildAdventure.Guild.TaxHandovers = 0
+
+#
+#    GuildAdventure.Specs.Enable
+#        Description: Talent templates (docs/specs.md). Every AI-played guild bot spends its talent points along a
+#                     template: the one its guild leader assigned, else the default of its class (ga_spec_template).
+#                     The first time, talents that do not fit the template (chosen by mod-playerbots before) are
+#                     reset once for free. Needs Playerbots.AutoPickTalentsForPlayerControlledBots = 0, or
+#                     mod-playerbots spends the points first.
+#        Default:     1
+
+GuildAdventure.Specs.Enable = 1
+
+#
+#    GuildAdventure.Dungeons.OpenDoors
+#        Description: Dungeon runs (docs/orders.md "Dungeon runs"). A closed door the group's leader comes to inside
+#                     a dungeon is opened by the group (a bot walks through a closed door, but nobody behind it can
+#                     be healed or shot: the door blocks the line of sight). Doors a boss's death opens are open
+#                     already when the bosses fall in their order; this is for the others (a door a key, a lever on
+#                     the far side or a small event opens). 0: doors stay as they are.
+#        Default:     1
+#
+#    GuildAdventure.Dungeons.MaxRuns
+#        Description: The most runs one dungeon order may ask for (the order repeats the dungeon that often).
+#        Default:     10
+#
+#    GuildAdventure.Dungeons.FieldRepair
+#        Description: Between two runs of one dungeon order every character of the group has its gear repaired
+#                     where it stands, for what a vendor would charge (its own money), and its bags go through the
+#                     loot filter. 0: no repairs between runs (the gear wears out over the runs).
+#        Default:     1
+#
+#    GuildAdventure.Dungeons.Teleport
+#        Description: A dungeon run's group is teleported into the dungeon when the run starts, wherever its
+#                     characters are, and out to each character's hearthstone place when it ends; between two
+#                     runs of one order the dungeon is reset while the group is out. 0: the group walks to the
+#                     entrance and comes out there (the behaviour before the dungeon run window).
+#        Default:     1
+#
+#    GuildAdventure.Dungeons.LingerSeconds
+#        Description: With Teleport on: after the last boss the group stays this many seconds (its loot), then it
+#                     leaves.
+#        Default:     30
+#
+#    GuildAdventure.Dungeons.UnlockInOrder
+#        Description: A guild plays the dungeons in their order (by level): the first one is open, and a run that
+#                     brings the end boss down opens the next one, for good. Holds for runs the guild leader orders
+#                     (the run window, the Orders sub-tab); the test aids of ".ga admin" are not bound by it.
+#                     0: every dungeon is open.
+#        Default:     1
+
+GuildAdventure.Dungeons.OpenDoors = 1
+GuildAdventure.Dungeons.MaxRuns = 10
+GuildAdventure.Dungeons.FieldRepair = 1
+GuildAdventure.Dungeons.Teleport = 1
+GuildAdventure.Dungeons.LingerSeconds = 30
+GuildAdventure.Dungeons.UnlockInOrder = 1
+
+#
+#    How a dungeon group fights (docs/orders.md "How a dungeon group fights").
+#
+#    GuildAdventure.Dungeons.TankLeadSeconds
+#        Description: When a fight begins, the damage dealers and the healer of a dungeon group hold back until
+#                     every creature of the fight attacks the tank, at most this many seconds. A character that is
+#                     attacked itself fights at once. 0: nobody holds back.
+#        Default:     4
+#
+#    GuildAdventure.Dungeons.EmergencyHealth
+#        Description: While the group holds back (and while the tank pulls), the healer heals when a character of
+#                     the group is below this health, in percent.
+#        Default:     50
+#
+#    GuildAdventure.Dungeons.CarefulPulls
+#        Description: The tank that leads a dungeon group brings the nearest creature of a group ahead to where its
+#                     own group waits (FightEscape.h "Careful pulls"), instead of walking into it: after the group
+#                     was wiped out in that run, or when CarefulPullPack creatures or more would come together and
+#                     one of them is at the tank's level or above. 0: never.
+#        Default:     1
+#
+#    GuildAdventure.Dungeons.CarefulPullPack
+#        Description: How many creatures that stand together make a "big group" for CarefulPulls.
+#        Default:     3
+#
+#    GuildAdventure.Dungeons.FocusFleeing
+#        Description: When a creature of the fight runs away, every damage dealer of the group in reach turns to
+#                     it. Characters that fight in melee follow it only while no creature outside the fight stands
+#                     where it runs to; else they let it go and the others shoot it. 0: everybody keeps its target.
+#        Default:     1
+
+#
+#    GuildAdventure.Dungeons.HopWhenNoWay
+#        Description: Where the path finder has no way on foot to the next boss (players swim or jump there: the
+#                     pools of Blackfathom Deeps), the group is put on walkable ground about 25 yd before that boss
+#                     after 90 seconds of getting no nearer. 0: such a boss is passed over after eight minutes.
+#        Default:     1
+
+GuildAdventure.Dungeons.HopWhenNoWay = 1
+
+#
+#    GuildAdventure.Dungeons.TakeOwnerAlong
+#        Description: The guild leader's own character can be a member of a dungeon group (the run window's group
+#                     step). While its owner plays it by hand, the run's teleports take it along like the bots: into
+#                     the dungeon at the start, ahead with the group where there is no way on foot, to the entrance
+#                     after a wipe, out and in again between two runs and out at the end (never out of a fight, each
+#                     with a line in his chat). 0: the run never moves a character its owner plays; he walks in by
+#                     himself, and an order of several runs ends when he is still inside at its reset.
+#        Default:     1
+
+GuildAdventure.Dungeons.TakeOwnerAlong = 1
+
+#
+#    GuildAdventure.Dungeons.EngageMargin
+#        Description: On its way to a boss the tank takes on every creature whose aggro range for the group's lowest
+#                     member plus this many yards touches its way (at least 15 yd in all). Bot setting.
+#        Default:     8
+#
+#    GuildAdventure.Dungeons.BigPullAt
+#        Description: A pack of this many creatures (two more when the group is five levels above them) is pulled to
+#                     the waiting group; a smaller one the tank walks into. Bot setting.
+#        Default:     4
+#
+#    GuildAdventure.Dungeons.GateHealth, .GateHealerMana, .GateDamageMana
+#        Description: Before a boss or a big pull the group waits at the tank until everybody has this much health,
+#                     the healer this much mana and a damage dealer this much mana (the owner's E2). Bot settings.
+#        Default:     90, 80, 60
+
+GuildAdventure.Dungeons.EngageMargin = 8
+GuildAdventure.Dungeons.BigPullAt = 4
+GuildAdventure.Dungeons.GateHealth = 90
+GuildAdventure.Dungeons.GateHealerMana = 80
+GuildAdventure.Dungeons.GateDamageMana = 60
+
+#
+#    GuildAdventure.Dungeons.SuppliesByDefault
+#        Description: A dungeon group uses the consumables of the guild storage (elixirs, flasks, scrolls, stones,
+#                     oils, poisons, scopes): each character once at the start of a run and once after a wipe, only
+#                     what fits it best by the stat weights of its role (one battle and one guardian elixir or a
+#                     flask, one scroll, what its weapons take). In the run window's preparation step every kind
+#                     is ticked and the leader takes out what he does not want used. This setting is for runs
+#                     that were not prepared there (an order of the Orders sub-tab, a test aid): 1 they use every
+#                     kind too, 0 they use none.
+#        Default:     1
+
+GuildAdventure.Dungeons.SuppliesByDefault = 1
+
+#
+#    GuildAdventure.Dungeons.MinReadiness
+#        Description: The readiness (percent, from level and gear) every bot of a group needs for a dungeon run to
+#                     start. 0: no limit, the guild leader sends whom he wants (the run window shows each bot's
+#                     readiness); the levels of a group's bots may lie as far apart as he likes either way.
+#        Default:     0
+
+GuildAdventure.Dungeons.MinReadiness = 0
+GuildAdventure.Dungeons.TankLeadSeconds = 4
+GuildAdventure.Dungeons.EmergencyHealth = 50
+GuildAdventure.Dungeons.CarefulPulls = 1
+GuildAdventure.Dungeons.CarefulPullPack = 3
+GuildAdventure.Dungeons.FocusFleeing = 1
+
+#
+#    GuildAdventure.DungeonRoles.Enable
+#        Description: Dungeon roles (docs/dungeon-roles.md). The guild leader gives a bot the dungeon role tank or
+#                     healer. Such a bot collects a dungeon set for the role while it levels (kept in a store of
+#                     its own, outside its bags: ga_bot_role_gear) and, for a dungeon run, changes to the talents of
+#                     the role (the second talent spec, free) and puts the set on; afterwards it changes back.
+#                     0: roles are stored and shown, but no bot collects or changes anything.
+#        Default:     1
+#
+#    GuildAdventure.DungeonRoles.FromStorage
+#        Description: A bot with a dungeon role takes equipment that improves its dungeon set out of the guild
+#                     storage, when no guild character in the world would wear the piece for levelling. Every
+#                     piece taken leaves a line in the activity log.
+#        Default:     1
+#
+#    GuildAdventure.DungeonRoles.WearForLevelling
+#        Description: A bot with a dungeon role wears the pieces of its role store while it levels when they are
+#                     better for its levelling talents than what it wears (the owner, 2026-11-14): armour and weapons
+#                     when mod-playerbots rates them as an upgrade, jewellery by the stats of the levelling talents
+#                     (a bare place takes any). They stay part of its dungeon set: a run finds them on the bot. What they
+#                     replace goes into the bags (the role store takes it back when the set wants it, the loot
+#                     filter the rest). A bot setting (per guild and per bot).
+#                     0 - never
+#                     1 - armour, jewellery and relics
+#                     2 - weapons too, piece by piece the way mod-playerbots rates them (a sword replaces a
+#                         two-hand weapon only when the sword alone is the upgrade)
+#        Default:     2
+#
+#    GuildAdventure.DungeonRoles.RespecCost
+#        Description: Copper a bot pays each time it changes to the talents of its role for a dungeon run (the
+#                     change back is free). A bot that cannot pay keeps its levelling talents and still puts the
+#                     dungeon set on.
+#        Default:     0 (free)
+
+GuildAdventure.DungeonRoles.Enable = 1
+
+#
+#    GuildAdventure.StatWeights.Enable
+#        Description: Items are judged by the stat weights of the owner's wowbot335 research (world table
+#                     ga_stat_weight, generated by tools/gen_stat_weights.py from wowbot335 profiles/statprio: the
+#                     leveling profile below level 60, the preraid profile at 60) instead of mod-playerbots' own,
+#                     for mod-playerbots' item choices and the module's alike (the owner, 2026-11-26; docs/orders.md
+#                     "Stat weights from wowbot335"). Needs mod-playerbots patch 0002 (tools/apply-playerbots-patches.ps1);
+#                     without it the module says so at startup and mod-playerbots' weights stay.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled: mod-playerbots' own weights)
+
+GuildAdventure.StatWeights.Enable = 1
+GuildAdventure.DungeonRoles.FromStorage = 1
+GuildAdventure.DungeonRoles.WearForLevelling = 2
+GuildAdventure.DungeonRoles.RespecCost = 0
+
+#
+#    GuildAdventure.Escape.Enable
+#    GuildAdventure.Escape.Margin
+#    GuildAdventure.Escape.MaxSeconds
+#    GuildAdventure.Escape.StepAside
+#    GuildAdventure.Escape.MaxFoes
+#        Description: Leaving a fight the bot would lose (docs/orders.md "Leaving a lost fight"). In a fight against
+#                     two or more foes, an elite or a foe three or more levels above it, an AI-played character
+#                     estimates what the rest of the fight costs (from what its own fights against one foe cost
+#                     it) and, when that is more than Margin times the health it has, stops attacking and runs
+#                     until the foes give up (a creature does 30 yards from its home once it has not been damaged
+#                     for about 11 seconds). The place is set aside for 15 minutes. A run that has not shaken the
+#                     foes off after MaxSeconds ends and the bot fights on. A higher Margin makes the bots braver.
+#                     StepAside: every two seconds a bot looks for a roaming creature far above it within 35
+#                     yards (hostile, four or more levels above it, and a rare, an elite or on a patrol); out of
+#                     combat it steps aside until the creature is 60 yards away, in a fight it leaves the fight.
+#                     MaxFoes: with this many foes at once of its level or above (one level below counts too)
+#                     the fight counts as lost whatever the estimate says (0 = the estimate alone decides).
+#                     A bot that would not live through the run either stays and fights with what protects it.
+#        Default:     1, 1.0, 35, 1, 3
+
+GuildAdventure.Escape.Enable = 1
+GuildAdventure.Escape.Margin = 1.0
+GuildAdventure.Escape.MaxSeconds = 35
+GuildAdventure.Escape.StepAside = 1
+GuildAdventure.Escape.MaxFoes = 3
+
+#
+#    GuildAdventure.Risk.Enable
+#    GuildAdventure.Risk.MaxFoeLevelAbove
+#    GuildAdventure.Risk.MaxFightCostPercent
+#    GuildAdventure.Risk.CautiousDeaths
+#    GuildAdventure.Risk.CautiousWindowMinutes
+#    GuildAdventure.Risk.CautiousMinutes
+#    GuildAdventure.Risk.RescueDeaths
+#    GuildAdventure.Risk.RescueWindowMinutes
+#        Description: Risk-aware planning (docs/orders.md "Risk"). The quest planner works an objective at the
+#                     spawn with the least danger for the way it costs (hostile mobs within 22 yards, a cave, the
+#                     target's level above the bot) instead of the nearest one, ranks objectives of quests above
+#                     the bot's level and of dangerous spots later, and leaves targets more than MaxFoeLevelAbove
+#                     levels above the bot (one more with a pet) alone until the bot has grown. Whether a spot is
+#                     worked at all is decided by the fight it means: the target and the hostile creatures whose
+#                     spawns lie within their pull distance of it, by the estimate the bot's own fights taught it
+#                     (what one foe of its level costs it, 1.3 times per level above, 0.87 per level below; one
+#                     after the other while the rest keeps hitting). A spot waits while that fight would cost the
+#                     bot more than MaxFightCostPercent of what it has: a healthy bot takes a single foe a level
+#                     above it and two weak ones at once, a bot with gear far below its level no pair of its own
+#                     level. Creatures that do not attack by themselves (yellow) are no pack. Fixed margins (no
+#                     foe above the bot's level, no pack unless two levels above it) left a level-3 character
+#                     without quest work in its starting area on 2026-11-12. It grinds where a
+#                     few mobs stand apart, not in the thickest pack. Deaths are remembered by place and foe: after
+#                     a death to a foe two or more levels above the bot, or two deaths within 80 yards, the place
+#                     (100 yards around it) is set aside, for objectives and grinding alike. CautiousDeaths deaths
+#                     within CautiousWindowMinutes make the bot play it safe for CautiousMinutes or until its next
+#                     level: it turns quests in and picks them up but works no objectives and grinds at a safe
+#                     spot. 0 deaths = never. Enable = 0 gives the old behaviour (nearest spawn, densest cluster).
+#                     RescueDeaths deaths within RescueWindowMinutes where the foes are four or more levels above
+#                     the bot, or in a zone that starts more than two levels above it, end a death loop: the dead
+#                     bot takes the spirit healer's resurrection (a quarter of its durability) and goes home to
+#                     its bind point as with its hearthstone (a spirit healer between level-25 skeletons killed a
+#                     level-11 bot 43 times in half an hour). 0 = never.
+#                     MaxFoeLevelAbove is 3 since 2026-11-14 (the owner: a detour or a refusal only for elites, for
+#                     creatures four or more levels above the bot and for groups it cannot take): a target, or a
+#                     creature beside a spot, four or more levels above the bot makes the spot wait; a single
+#                     ordinary target with no more than a share of one foe beside it waits for nothing else.
+#        Default:     1, 3, 80, 4, 20, 15, 3, 10
+
+GuildAdventure.Risk.Enable = 1
+GuildAdventure.Risk.MaxFoeLevelAbove = 3
+GuildAdventure.Risk.MaxFightCostPercent = 80
+GuildAdventure.Risk.CautiousDeaths = 4
+GuildAdventure.Risk.CautiousWindowMinutes = 20
+GuildAdventure.Risk.CautiousMinutes = 15
+GuildAdventure.Risk.RescueDeaths = 3
+GuildAdventure.Risk.RescueWindowMinutes = 10
+
+#
+#    GuildAdventure.Squads.Enable
+#    GuildAdventure.Squads.MaxSize
+#    GuildAdventure.Squads.MaxLevelGap
+#    GuildAdventure.Squads.Auto
+#    GuildAdventure.Squads.WaitYards
+#    GuildAdventure.Squads.MaxWaitSeconds
+#    GuildAdventure.Squads.CatchUpYards
+#        Description: Squads of guild bots (docs/orders.md "Squads"). A squad is one leader bot that plays its own
+#                     order and members that follow it (playerbots master = the leader, all in the leader's party,
+#                     loot free for all). A member's own order waits while it follows; it plays it again when it
+#                     leaves the squad, while its leader is benched or not in the world, and while their levels are
+#                     more than MaxLevelGap apart. A member takes the quests its leader takes at the giver they stand
+#                     at and hands in completed quests at their ender. The leader waits (MaxWaitSeconds at most at a
+#                     time) for a member within WaitYards that rests, is dead and runs back to its corpse or fights,
+#                     and for one that lags behind. A member more than CatchUpYards behind (or on another map: the
+#                     leader flew, took a ship or a portal) travels after it after 15 seconds as a player would (on
+#                     foot, by flight, ship, zeppelin or portal); only when it finds no way at all is it put beside
+#                     its leader (CatchUpFallback, a line in the activity log; 0: it waits and tries again).
+#                     The escape from a lost fight counts the squad's health and foes; the danger limit of a quest
+#                     spot grows with the squad. MaxSize counts the leader (2-5). Auto = 1: bots without a squad that
+#                     quest in the same zone within two levels form squads by themselves (and part when they part).
+#                     A squad is also the group of a dungeon run (docs/orders.md "Dungeon runs"), hence five.
+#        Default:     1, 5, 3, 0, 80, 120, 250, 1
+
+GuildAdventure.Squads.Enable = 1
+GuildAdventure.Squads.MaxSize = 5
+GuildAdventure.Squads.MaxLevelGap = 3
+GuildAdventure.Squads.Auto = 0
+GuildAdventure.Squads.WaitYards = 80
+GuildAdventure.Squads.MaxWaitSeconds = 120
+GuildAdventure.Squads.CatchUpYards = 250
+GuildAdventure.Squads.CatchUpFallback = 1
+
+#
+#    GuildAdventure.Squads.QuestPartners
+#    GuildAdventure.Squads.PartnerDeaths
+#    GuildAdventure.Squads.PartnerHours
+#    GuildAdventure.Squads.PartnerTooHard
+#    GuildAdventure.Squads.PartnerYards
+#    GuildAdventure.Squads.PartnerMeetMinutes
+#    GuildAdventure.Squads.PartnerMaxMinutes
+#    GuildAdventure.Squads.PartnerRetryMinutes
+#        Description: Quest partners (docs/orders.md "Quest partners"): guild bots with the same hard quest team up to
+#                     finish it. Hard is an elite or group quest (not a dungeon or raid quest), a quest guild
+#                     characters died on PartnerDeaths times within PartnerHours, and with PartnerTooHard = 1 a quest
+#                     whose every spot near was too much for a guild character at its level (each counts for guild
+#                     characters up to that level). Without a partner such a quest stays in the log and is skipped
+#                     (not given back for deaths or for no progress) until another guild bot holds it too. Bots on
+#                     AUTO or LEVEL_ZONE in no squad, within Squads.MaxLevelGap levels, in one zone within PartnerYards
+#                     of each other pair up (a quest hard only because it was too much: one member at most one level
+#                     below the leader): the higher level leads, the other walks to it (no teleport) and follows
+#                     it until the quest is done; they part when it is done, when they have not met within
+#                     PartnerMeetMinutes, after PartnerMaxMinutes or when it is too much even for both, and the quest
+#                     is not paired again for PartnerRetryMinutes. QuestPartners is a bot setting: the guild leader can
+#                     switch it per guild and per bot. Needs Squads.Enable = 1.
+#        Default:     1, 2, 6, 1, 400, 8, 60, 30
+
+GuildAdventure.Squads.QuestPartners = 1
+GuildAdventure.Squads.PartnerDeaths = 2
+GuildAdventure.Squads.PartnerHours = 6
+GuildAdventure.Squads.PartnerTooHard = 1
+GuildAdventure.Squads.PartnerYards = 400
+GuildAdventure.Squads.PartnerMeetMinutes = 8
+GuildAdventure.Squads.PartnerMaxMinutes = 60
+GuildAdventure.Squads.PartnerRetryMinutes = 30
+
+#
+#    GuildAdventure.ClassAbilities.Enable
+#    GuildAdventure.ClassAbilities.HunterPet
+#    GuildAdventure.ClassAbilities.PetTalents
+#        Description: Guild bots get what their class only learns from class quests, where they are, when they
+#                     reach the level (world table ga_class_ability): the hunter's pet spells, the warlock's
+#                     voidwalker, succubus and felhunter, the warrior's defensive and berserker stance, the druid's
+#                     bear form, the paladin's Redemption, the shaman's totems and first totem spells. The class
+#                     trainers do not teach these, and the order planner does not do class quests. HunterPet: a
+#                     hunter without a pet also gets its first pet then (a beast of its start zone, at its own
+#                     level). The leader plays his class quests himself. (The owner, 2026-11-12.) PetTalents: the pet
+#                     of a hunter the AI plays (the leader too) spends its talent points along a fixed build of its
+#                     tree: Ferocity and Cunning for damage, Tenacity for tanking; a pet whose talents are not a part
+#                     of that build (the owner chose them) is left alone, and nothing is touched while the owner plays
+#                     the hunter (the owner, 2026-11-13).
+#        Default:     1, 1, 1
+
+GuildAdventure.ClassAbilities.Enable = 1
+GuildAdventure.ClassAbilities.HunterPet = 1
+GuildAdventure.ClassAbilities.PetTalents = 1
+
+#
+#    GuildAdventure.Poisons.Enable
+#    GuildAdventure.Poisons.Stock
+#    GuildAdventure.Poisons.Pair
+#        Description: Rogues the AI plays keep poisons for their weapons from level 20 (the owner, 2026-11-13: [quote left out]). In 3.3.5a poisons are items a poison vendor sells, used on a
+#                     weapon; mod-playerbots puts them on by itself whenever a weapon has none. Enable: a rogue keeps a
+#                     stock of Stock doses per weapon hand (one dose lasts an hour), out of the guild storage first,
+#                     else bought at a poison vendor at a hub after a hand-in or at any vendor it visits that sells
+#                     them, the best rank its level allows. Pair: 0 = Instant Poison on the main hand and Deadly Poison
+#                     on the off hand, 1 = Instant on both, 2 = Deadly on both (Deadly from level 30, before that
+#                     Instant on both). Bot settings of the category "Class and training".
+#        Default:     1, 10, 0
+
+GuildAdventure.Poisons.Enable = 1
+GuildAdventure.Poisons.Stock = 10
+GuildAdventure.Poisons.Pair = 0
+
+#
+#    GuildAdventure.DeathKnights.SkipStart
+#    GuildAdventure.ClassAbilities.Runeforging
+#        Description: Death knights (docs/orders.md "Death knights"; the owner, 2026-11-14: a recruited death knight at 55
+#                     in the capital instead of the starting area). The core creates a death knight at
+#                     StartHeroicPlayerLevel in Acherus, whose campaign (vehicles and script events) the bots do not
+#                     play and which a death knight without Death Gate cannot leave. SkipStart: 1 = a recruited death
+#                     knight is saved in its side's capital (Stormwind, Orgrimmar) with its hearthstone bound at the
+#                     inn there; at its first plan the starting campaign counts as done (the quests rewarded without
+#                     experience or gold, their reputation, Death Gate, the Acherus Deathcharger, runeforging) and it
+#                     gets the campaign's item rewards (blue, item level 65-70), each put on where it beats what it
+#                     wears; 2 = the same without the item rewards (it keeps the green Acherus starting gear); 0 = it
+#                     begins in Acherus as the core makes it (and stands there). Runeforging: a death knight the AI
+#                     plays puts the best rune it knows on a weapon without an enchantment, as at a runeforge (tank
+#                     runes while its dungeon set as a tank is on). Bot settings of the category "Class and training"
+#                     (SkipStart per guild, Runeforging per guild and per bot).
+#        Default:     1, 1
+
+GuildAdventure.DeathKnights.SkipStart = 1
+GuildAdventure.ClassAbilities.Runeforging = 1
+
+#
+#    GuildAdventure.Planner.Spread
+#    GuildAdventure.Planner.BudgetMs
+#    GuildAdventure.Planner.SearchesPerTick
+#        Description: The order planner's cost on the world thread (docs/performance.md PF-1). The
+#                     planner steps every guild character about once a second and its quick checks
+#                     four times a second. Spread: each character has a phase of its own and the
+#                     world ticks step the ones that are due, in the order they fell due, until the
+#                     planner has used BudgetMs of the tick (at least a quarter of the last tick's
+#                     length; when it is more than half a second behind, as long as the last tick)
+#                     or, when SearchesPerTick is set, that many expensive searches (a flight, an
+#                     errand, a zone) were made; the rest wait for the next tick. 0 = every character
+#                     in one world tick once a second, as before. SearchesPerTick 0 = no cap (a cap of
+#                     2 left bots 20 s without a step while 1600 of them looked for their zones).
+#        Default:     1, 4, 0
+
+GuildAdventure.Planner.Spread = 1
+GuildAdventure.Planner.BudgetMs = 4
+GuildAdventure.Planner.SearchesPerTick = 0
+
+#
+#    GuildAdventure.Planner.RouteCache
+#        Description: The path finder's answer whether a walk between two points has a way, and its
+#                     length (WalkReaches, under every route search), is remembered for ten minutes
+#                     (three for a "no"), by map and both ends rounded to 8 yd (docs/performance.md
+#                     PF-2). 0 = every walk asked again.
+#        Default:     1 - (Enabled)
+
+GuildAdventure.Planner.RouteCache = 1
+
+#
+#    GuildAdventure.Perf.SlowTickMs
+#        Description: An activity log line for a world tick in which the planner took longer than this
+#                     many milliseconds, with its three most expensive steps (".ga perf" shows the
+#                     last minute). 0 = never.
+#        Default:     50
+
+GuildAdventure.Perf.SlowTickMs = 50
+
+#
+#    GuildAdventure.Debug
+#        Description: Verbose module logging.
+#        Default:     0 - (Disabled)
+
+GuildAdventure.Debug = 0

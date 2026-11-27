@@ -1,0 +1,915 @@
+Guild Adventure core patches for the AzerothCore Playerbot branch at e7e2e288e7d9ec30e2dfe6f417178a95986fcbb2.
+What each part does: docs/core-patches.md. Apply with tools/setup-server.ps1 or
+  git -C <core> checkout -B guild-adventure e7e2e288e7d9ec30e2dfe6f417178a95986fcbb2 && git -C <core> apply <this file>
+License: GPL-2.0-or-later, like the files it changes.
+
+diff --git a/src/server/apps/worldserver/worldserver.conf.dist b/src/server/apps/worldserver/worldserver.conf.dist
+index 29f03f033..a4ed80ae5 100644
+--- a/src/server/apps/worldserver/worldserver.conf.dist
++++ b/src/server/apps/worldserver/worldserver.conf.dist
+@@ -1338,6 +1338,32 @@ MapUpdateInterval = 10
+ 
+ MapUpdate.Threads = 1
+ 
++#
++#    Bots.UpdateInterval
++#        Description: (GuildAdventure: CP-11) A character without a client (a bot: its session has
++#                     no open socket) is updated (Player::Update: auras, position, regeneration, its
++#                     AI) once every this many milliseconds, each bot at a phase of its own, so the
++#                     bots of a map are spread over the world ticks; the time in between is handed to
++#                     its next update. Its session's packets are handled every tick. A character a
++#                     client plays is updated every tick.
++#        Default:     75
++#                     0 - (every character every world tick)
++
++Bots.UpdateInterval = 75
++
++#
++#    Bots.GridActivationRange
++#        Description: (GuildAdventure: CP-12) The range (yards) around a character without a client
++#                     (a bot) in which the cells of a continent are kept awake (creatures, game
++#                     objects updated). What a client sees is woken by the client's own character.
++#                     Dungeons and battlegrounds keep the map's visibility range. Off by default:
++#                     at 1600 bots 60 yards made the world tick slower, not faster (load test of
++#                     2026-11-21, mod-guild-adventure docs/performance.md section 10).
++#        Default:     0 - (the map's visibility range, as for a client)
++#                     60 - (the range the performance plan proposed)
++
++Bots.GridActivationRange = 0
++
+ #
+ #    MoveMaps.Enable
+ #        Description: Enable/Disable pathfinding using mmaps - recommended.
+diff --git a/src/server/game/Entities/Object/Object.cpp b/src/server/game/Entities/Object/Object.cpp
+index 89c9cf410..00cf06459 100644
+--- a/src/server/game/Entities/Object/Object.cpp
++++ b/src/server/game/Entities/Object/Object.cpp
+@@ -56,6 +56,7 @@
+ #include "Vehicle.h"
+ #include "World.h"
+ #include "WorldPacket.h"
++#include "WorldSession.h" // GuildAdventure: CP-12
+ 
+ /// @todo: this import is not necessary for compilation and marked as unused by the IDE
+ //  however, for some reasons removing it would cause a damn linking issue
+@@ -1693,7 +1694,15 @@ float WorldObject::GetGridActivationRange() const
+         {
+             return DEFAULT_VISIBILITY_INSTANCE;
+         }
+-        return IsInWintergrasp() ? VISIBILITY_DIST_WINTERGRASP : GetMap()->GetVisibilityRange();
++        float const range = IsInWintergrasp() ? VISIBILITY_DIST_WINTERGRASP : GetMap()->GetVisibilityRange();
++        // GuildAdventure: CP-12 - a character without a client (a bot: its session has no open socket) keeps the cells
++        // of a smaller range awake on a continent (Bots.GridActivationRange). What a client sees is woken by the
++        // client's own character; dungeons and battlegrounds keep the map's range.
++        float const botRange = sWorld->getFloatConfig(CONFIG_BOTS_GRID_ACTIVATION_RANGE);
++        if (botRange > 0.0f && botRange < range && !GetMap()->Instanceable() && ToPlayer()->GetSession() &&
++            ToPlayer()->GetSession()->IsSocketClosed())
++            return botRange;
++        return range;
+     }
+     else if (ToCreature())
+     {
+diff --git a/src/server/game/Entities/Player/Player.cpp b/src/server/game/Entities/Player/Player.cpp
+index 324b3d2fe..f3a60824c 100644
+--- a/src/server/game/Entities/Player/Player.cpp
++++ b/src/server/game/Entities/Player/Player.cpp
+@@ -167,6 +167,7 @@ Player::Player(WorldSession* session): Unit(), m_mover(this), _cinematicMgr(*thi
+     m_valuesCount = PLAYER_END;
+ 
+     m_session = session;
++    m_characterAccountId = 0; // GuildAdventure: set by Create() and LoadFromDB()
+ 
+     m_ingametime = 0;
+ 
+@@ -492,6 +493,7 @@ bool Player::Create(ObjectGuid::LowType guidlow, CharacterCreateInfo* createInfo
+     Object::_Create(guidlow, 0, HighGuid::Player);
+ 
+     m_name = createInfo->Name;
++    m_characterAccountId = GetSession()->GetAccountId(); // GuildAdventure: the new character's characters.account
+ 
+     PlayerInfo const* info = sObjectMgr->GetPlayerInfo(createInfo->Race, createInfo->Class);
+     if (!info)
+@@ -879,6 +881,11 @@ int32 Player::getMaxTimer(MirrorTimerType timer)
+             {
+                 if (!IsAlive() || HasWaterBreathingAura() || GetSession()->GetSecurity() >= AccountTypes(sWorld->getIntConfig(CONFIG_DISABLE_BREATHING)))
+                     return DISABLED_MIRROR_TIMER;
++                // GuildAdventure: CP-8 - a module lets the player breathe under water without an aura (guild perks)
++                bool breathes = false;
++                sScriptMgr->OnPlayerCheckWaterBreathing(this, breathes);
++                if (breathes)
++                    return DISABLED_MIRROR_TIMER;
+                 int32 UnderWaterTime = sWorld->getIntConfig(CONFIG_WATER_BREATH_TIMER);
+                 UnderWaterTime *= GetTotalAuraMultiplier(SPELL_AURA_MOD_WATER_BREATHING);
+                 return UnderWaterTime;
+@@ -11823,14 +11830,16 @@ void Player::SendInitialPacketsBeforeAddToMap()
+     sScriptMgr->OnPlayerSendInitialPacketsBeforeAddToMap(this, data);
+ }
+ 
+-void Player::SendInitialPacketsAfterAddToMap()
++void Player::SendInitialPacketsAfterAddToMap(bool loginEffect /*= true*/)
+ {
+     UpdateVisibilityForPlayer(true);
+ 
+     GetSession()->ResetTimeSync();
+     GetSession()->SendTimeSync();
+ 
+-    CastSpell(this, 836, true);                             // LOGINEFFECT
++    // GuildAdventure: CP-4, an in-world resync (take control, Path S) is not a login: no sparkle
++    if (loginEffect)
++        CastSpell(this, 836, true);                         // LOGINEFFECT
+ 
+     // set some aura effects that send packet to player client after add player to map
+     // SendMessageToSet not send it to player not it map, only for aura that not changed anything at re-apply
+@@ -14226,6 +14235,8 @@ void Player::HandleFall(MovementInfo const& movementInfo)
+         if (damageperc > 0 && !IsImmunedToDamageOrSchool(SPELL_SCHOOL_MASK_NORMAL))
+         {
+             uint32 damage = (uint32)(damageperc * GetMaxHealth() * sWorld->getRate(RATE_DAMAGE_FALL));
++            // GuildAdventure: CP-8 - a module lowers or cancels fall damage (guild perks)
++            sScriptMgr->OnPlayerFallDamage(this, damage);
+ 
+             if (damage > 0)
+             {
+@@ -16357,19 +16368,29 @@ void Player::_LoadPetStable(uint8 petStableSlots, PreparedQueryResult result)
+     }
+ }
+ 
++// GuildAdventure:
++uint32 Player::GetCharacterAccountId() const
++{
++    return m_characterAccountId ? m_characterAccountId : GetSession()->GetAccountId();
++}
++
+ void Player::_SaveInstanceTimeRestrictions(CharacterDatabaseTransaction trans)
+ {
+     if (_instanceResetTimes.empty())
+         return;
+ 
++    // GuildAdventure: the lock times belong to the character's own account, not to the session that happens to
++    // control the character (a guild bot played through its owner's session)
++    uint32 const accountId = GetCharacterAccountId();
++
+     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_ACCOUNT_INSTANCE_LOCK_TIMES);
+-    stmt->SetData(0, GetSession()->GetAccountId());
++    stmt->SetData(0, accountId);
+     trans->Append(stmt);
+ 
+     for (InstanceTimeMap::const_iterator itr = _instanceResetTimes.begin(); itr != _instanceResetTimes.end(); ++itr)
+     {
+         stmt = CharacterDatabase.GetPreparedStatement(CHAR_INS_ACCOUNT_INSTANCE_LOCK_TIMES);
+-        stmt->SetData(0, GetSession()->GetAccountId());
++        stmt->SetData(0, accountId);
+         stmt->SetData(1, itr->first);
+         stmt->SetData(2, (int64)itr->second);
+         trans->Append(stmt);
+diff --git a/src/server/game/Entities/Player/Player.h b/src/server/game/Entities/Player/Player.h
+index 5a29ac7b4..04b975625 100644
+--- a/src/server/game/Entities/Player/Player.h
++++ b/src/server/game/Entities/Player/Player.h
+@@ -1120,6 +1120,24 @@ public:
+     bool Create(ObjectGuid::LowType guidlow, CharacterCreateInfo* createInfo);
+ 
+     void Update(uint32 time) override;
++    // GuildAdventure: CP-11 - a character without a client (a bot) is updated once every interval ms (Bots.UpdateInterval),
++    // at a phase of its own, so the bots of a map are spread over the world ticks. True when it is due: diff is then the
++    // time since its last update. The diffs of the ticks it skips are collected.
++    bool TakeBotUpdate(uint32 tickDiff, uint32 interval, uint32& diff)
++    {
++        if (m_botUpdatePhase >= interval + interval) // not phased yet (or the interval shrank): a phase from its guid
++            m_botUpdatePhase = uint32((uint64(GetGUID().GetCounter()) * 2654435761ull) % interval);
++        m_botUpdatePhase += tickDiff;
++        m_deferredUpdateDiff += tickDiff;
++        if (m_botUpdatePhase < interval)
++            return false;
++        m_botUpdatePhase %= interval;
++        diff = m_deferredUpdateDiff;
++        m_deferredUpdateDiff = 0;
++        return true;
++    }
++    // A character a client plays is updated every tick: what it collected as a bot comes with its next update.
++    uint32 TakeDeferredUpdateDiff() { uint32 const diff = m_deferredUpdateDiff; m_deferredUpdateDiff = 0; return diff; }
+ 
+     PlayerFlags GetPlayerFlags() const { return PlayerFlags(GetUInt32Value(PLAYER_FLAGS)); }
+     bool HasPlayerFlag(PlayerFlags flags) const { return HasFlag(PLAYER_FLAGS, flags) != 0; }
+@@ -1138,7 +1156,8 @@ public:
+     bool IsInAreaTriggerRadius(AreaTrigger const* trigger, float delta = 0.f) const;
+ 
+     void SendInitialPacketsBeforeAddToMap();
+-    void SendInitialPacketsAfterAddToMap();
++    // GuildAdventure: CP-4, loginEffect = false skips the login sparkle (spell 836) for an in-world resync
++    void SendInitialPacketsAfterAddToMap(bool loginEffect = true);
+     void SendTransferAborted(uint32 mapid, TransferAbortReason reason, uint8 arg = 0);
+     void SendInstanceResetWarning(uint32 mapid, Difficulty difficulty, uint32 time, bool onEnterMap);
+ 
+@@ -2032,6 +2051,10 @@ public:
+     [[nodiscard]] WorldSession* GetSession() const { return m_session; }
+     void SetSession(WorldSession* sess) { m_session = sess; }
+ 
++    // GuildAdventure: the account the character belongs to (characters.account). It differs from
++    // GetSession()->GetAccountId() while another account's session controls the character.
++    [[nodiscard]] uint32 GetCharacterAccountId() const;
++
+     void BuildCreateUpdateBlockForPlayer(UpdateData* data, Player* target) override;
+     void DestroyForPlayer(Player* target, bool onDeath = false) const override;
+     void SendLogXPGain(uint32 GivenXP, Unit* victim, uint32 BonusXP, bool recruitAFriend = false, float group_rate = 1.0f);
+@@ -2910,6 +2933,9 @@ protected:
+     uint32 m_resurrectHealth, m_resurrectMana;
+ 
+     WorldSession* m_session;
++    uint32 m_characterAccountId; // GuildAdventure: see GetCharacterAccountId()
++    uint32 m_deferredUpdateDiff = 0; // GuildAdventure: CP-11, see TakeBotUpdate()
++    uint32 m_botUpdatePhase = 0xFFFFFFFF; // GuildAdventure: CP-11
+ 
+     typedef std::list<Channel*> JoinedChannelsList;
+     JoinedChannelsList m_channels;
+diff --git a/src/server/game/Entities/Player/PlayerQuest.cpp b/src/server/game/Entities/Player/PlayerQuest.cpp
+index c36b8556b..39e736e14 100644
+--- a/src/server/game/Entities/Player/PlayerQuest.cpp
++++ b/src/server/game/Entities/Player/PlayerQuest.cpp
+@@ -260,7 +260,9 @@ bool Player::CanTakeQuest(Quest const* quest, bool msg)
+            && SatisfyQuestBreadcrumb(quest, msg)
+            && SatisfyQuestDay(quest, msg) && SatisfyQuestWeek(quest, msg)
+            && SatisfyQuestMonth(quest, msg) && SatisfyQuestSeasonal(quest, msg)
+-           && SatisfyQuestConditions(quest, msg);
++           && SatisfyQuestConditions(quest, msg)
++           // GuildAdventure: CP-9, a script may refuse the quest for this player
++           && sScriptMgr->OnPlayerCanTakeQuest(this, quest);
+ }
+ 
+ bool Player::CanAddQuest(Quest const* quest, bool msg)
+diff --git a/src/server/game/Entities/Player/PlayerStorage.cpp b/src/server/game/Entities/Player/PlayerStorage.cpp
+index c3117845d..4569a8440 100644
+--- a/src/server/game/Entities/Player/PlayerStorage.cpp
++++ b/src/server/game/Entities/Player/PlayerStorage.cpp
+@@ -5054,6 +5054,8 @@ bool Player::LoadFromDB(ObjectGuid playerGuid, CharacterDatabaseQueryHolder cons
+         return false;
+     }
+ 
++    m_characterAccountId = dbAccountId; // GuildAdventure
++
+     if (holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_BANNED))
+     {
+         LOG_ERROR("entities.player", "Player ({}) is banned, can't load.", playerGuid.ToString());
+diff --git a/src/server/game/Entities/Unit/Unit.cpp b/src/server/game/Entities/Unit/Unit.cpp
+index f65662ac9..4e03fc99d 100644
+--- a/src/server/game/Entities/Unit/Unit.cpp
++++ b/src/server/game/Entities/Unit/Unit.cpp
+@@ -11102,6 +11102,10 @@ void Unit::UpdateSpeed(UnitMoveType mtype, bool forced)
+             speed = min_speed;
+     }
+ 
++    // GuildAdventure: CP-8 - a module's permanent speed bonus for players (guild perks)
++    if (Player* player = ToPlayer())
++        sScriptMgr->OnPlayerUpdateSpeed(player, mtype, speed);
++
+     SetSpeed(mtype, speed, forced);
+ }
+ 
+diff --git a/src/server/game/Handlers/CharacterHandler.cpp b/src/server/game/Handlers/CharacterHandler.cpp
+index 7763ac8d2..c228633ac 100644
+--- a/src/server/game/Handlers/CharacterHandler.cpp
++++ b/src/server/game/Handlers/CharacterHandler.cpp
+@@ -239,6 +239,9 @@ void WorldSession::HandleCharEnum(PreparedQueryResult result)
+         } while (result->NextRow());
+     }
+ 
++    // GuildAdventure: scripts may append characters of other accounts (the guild bot the owner switches to)
++    sScriptMgr->OnSessionCharEnum(this, data, num);
++
+     data.put<uint8>(0, num);
+ 
+     SendPacket(&data);
+diff --git a/src/server/game/Maps/Map.cpp b/src/server/game/Maps/Map.cpp
+index ba4c57ed8..9d0fa1896 100644
+--- a/src/server/game/Maps/Map.cpp
++++ b/src/server/game/Maps/Map.cpp
+@@ -438,6 +438,22 @@ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
+     if (t_diff)
+         _mapCollisionData.GetDynamicTree().update(t_diff);
+ 
++    // GuildAdventure: CP-11 - a character without a client (a bot: its session has no open socket) is updated once every
++    // Bots.UpdateInterval ms at a phase of its own (Player::TakeBotUpdate), with the diffs of the ticks in between; its
++    // session's packets are handled every tick. A character a client plays is updated every tick as before.
++    uint32 const botInterval = sWorld->getIntConfig(CONFIG_BOTS_UPDATE_INTERVAL);
++    auto updatePlayer = [botInterval](Player* player, WorldSession const* session, uint32 diff)
++    {
++        if (botInterval && session->IsSocketClosed())
++        {
++            uint32 botDiff = 0;
++            if (player->TakeBotUpdate(diff, botInterval, botDiff))
++                player->Update(botDiff);
++            return;
++        }
++        player->Update(diff + player->TakeDeferredUpdateDiff());
++    };
++
+     // Update world sessions and players
+     for (m_mapRefIter = m_mapRefMgr.begin(); m_mapRefIter != m_mapRefMgr.end(); ++m_mapRefIter)
+     {
+@@ -451,7 +467,7 @@ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
+ 
+             // update players at tick
+             if (!t_diff)
+-                player->Update(s_diff);
++                updatePlayer(player, session, s_diff); // GuildAdventure: CP-11
+         }
+     }
+ 
+@@ -486,7 +502,7 @@ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
+         if (!player || !player->IsInWorld())
+             continue;
+ 
+-        player->Update(s_diff);
++        updatePlayer(player, player->GetSession(), s_diff); // GuildAdventure: CP-11
+ 
+         if (_updatableObjectListRecheckTimer.Passed())
+         {
+diff --git a/src/server/game/Movement/MovementGenerators/PointMovementGenerator.cpp b/src/server/game/Movement/MovementGenerators/PointMovementGenerator.cpp
+index 994babe1e..44e5d827d 100644
+--- a/src/server/game/Movement/MovementGenerators/PointMovementGenerator.cpp
++++ b/src/server/game/Movement/MovementGenerators/PointMovementGenerator.cpp
+@@ -22,6 +22,7 @@
+ #include "MoveSplineInit.h"
+ #include "ObjectAccessor.h"
+ #include "Player.h"
++#include "ScriptMgr.h"
+ #include "World.h"
+ #include <limits>
+ 
+@@ -62,7 +63,15 @@ void PointMovementGenerator<T>::DoInitialize(T* unit)
+     {
+         PathGenerator path(unit);
+         bool result = path.CalculatePath(i_x, i_y, i_z, _forceDestination);
+-        if (result && !(path.GetPathType() & PATHFIND_NOPATH) && path.GetPath().size() > 2)
++        bool const usesPath = result && !(path.GetPathType() & PATHFIND_NOPATH) && path.GetPath().size() > 2;
++
++        // GuildAdventure: CP-10 - a script may cancel the movement of a player (a server-driven character), for
++        // example when the path leaves the ground. Nothing is launched then and DoUpdate ends the generator.
++        if (Player* player = unit->ToPlayer())
++            if (!sScriptMgr->OnPlayerCanStartPointMovement(player, path, usesPath, i_x, i_y, i_z))
++                return;
++
++        if (usesPath)
+         {
+             m_precomputedPath = path.GetPath();
+             init.MovebyPath(m_precomputedPath);
+@@ -196,6 +205,22 @@ bool PointMovementGenerator<T>::DoUpdate(T* unit, uint32 diff)
+             return rebasedPath;
+         };
+ 
++        // GuildAdventure: CP-10 - a movement whose start was put off in DoInitialize (the unit was rooted or casting)
++        // starts here; a script gets the same say as there.
++        if (m_precomputedPath.empty() && _generatePath)
++        {
++            if (Player* player = unit->ToPlayer())
++            {
++                PathGenerator path(unit);
++                bool result = path.CalculatePath(i_x, i_y, i_z, _forceDestination);
++                bool const usesPath = result && !(path.GetPathType() & PATHFIND_NOPATH) && path.GetPath().size() > 2;
++                if (!sScriptMgr->OnPlayerCanStartPointMovement(player, path, usesPath, i_x, i_y, i_z))
++                    return false;
++                if (usesPath)
++                    m_precomputedPath = path.GetPath();
++            }
++        }
++
+         if (m_precomputedPath.size())
+         {
+             if (!unit->movespline->Finalized())
+diff --git a/src/server/game/Movement/MovementGenerators/TargetedMovementGenerator.cpp b/src/server/game/Movement/MovementGenerators/TargetedMovementGenerator.cpp
+index 2c9f30957..82e28c9bd 100644
+--- a/src/server/game/Movement/MovementGenerators/TargetedMovementGenerator.cpp
++++ b/src/server/game/Movement/MovementGenerators/TargetedMovementGenerator.cpp
+@@ -21,6 +21,7 @@
+ #include "MoveSplineInit.h"
+ #include "Pet.h"
+ #include "Player.h"
++#include "ScriptMgr.h"
+ #include "Spell.h"
+ #include "Transport.h"
+ 
+@@ -189,6 +190,22 @@ bool ChaseMovementGenerator<T>::DispatchSplineToPosition(T* owner, float x, floa
+     if (cutPath)
+         i_path->ShortenPathUntilDist(targetPos, maxTarget);
+ 
++    // GuildAdventure: CP-13 - a player's chase asks the point movement hook of CP-10 too before its spline starts. A
++    // chase towards a target the path finder cannot reach (one that flies over a slope) runs the two-point path as a
++    // straight spline, and a server-driven character chased a gargoyle 18 yards into the hill under it. A script that
++    // returns false stops the chase movement here, as a failed path does.
++    if constexpr (std::is_same_v<T, Player>)
++    {
++        Movement::PointsArray const& points = i_path->GetPath();
++        bool const usesPath = !(i_path->GetPathType() & PATHFIND_NOPATH) && points.size() > 2;
++        G3D::Vector3 const end = points.empty() ? G3D::Vector3(x, y, z) : points.back();
++        if (!sScriptMgr->OnPlayerCanStartPointMovement(owner, *i_path, usesPath, end.x, end.y, end.z))
++        {
++            owner->StopMoving();
++            return false;
++        }
++    }
++
+     if (cOwner)
+     {
+         cOwner->SetCannotReachTarget();
+diff --git a/src/server/game/Scripting/ScriptDefines/PlayerScript.cpp b/src/server/game/Scripting/ScriptDefines/PlayerScript.cpp
+index 4ac4571a3..6d3bba26b 100644
+--- a/src/server/game/Scripting/ScriptDefines/PlayerScript.cpp
++++ b/src/server/game/Scripting/ScriptDefines/PlayerScript.cpp
+@@ -382,6 +382,55 @@ void ScriptMgr::OnPlayerGetMaxPersonalArenaRatingRequirement(Player const* playe
+     CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_GET_MAX_PERSONAL_ARENA_RATING_REQUIREMENT, script->OnPlayerGetMaxPersonalArenaRatingRequirement(player, minSlot, maxArenaRating));
+ }
+ 
++// GuildAdventure: CP-7
++void ScriptMgr::OnPlayerCheckReagent(Player* player, uint32 itemId, uint32 count, bool& enough)
++{
++    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_CHECK_REAGENT, script->OnPlayerCheckReagent(player, itemId, count, enough));
++}
++
++// GuildAdventure: CP-7
++void ScriptMgr::OnPlayerTakeReagent(Player* player, uint32 itemId, uint32& count)
++{
++    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_TAKE_REAGENT, script->OnPlayerTakeReagent(player, itemId, count));
++}
++
++// GuildAdventure: CP-8
++void ScriptMgr::OnPlayerUpdateSpeed(Player* player, UnitMoveType moveType, float& rate)
++{
++    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_UPDATE_SPEED, script->OnPlayerUpdateSpeed(player, moveType, rate));
++}
++
++// GuildAdventure: CP-8
++void ScriptMgr::OnPlayerSpellCastTime(Player* player, SpellInfo const* spellInfo, int32& castTime)
++{
++    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_SPELL_CAST_TIME, script->OnPlayerSpellCastTime(player, spellInfo, castTime));
++}
++
++// GuildAdventure: CP-8
++void ScriptMgr::OnPlayerCheckWaterBreathing(Player* player, bool& breathes)
++{
++    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_CHECK_WATER_BREATHING, script->OnPlayerCheckWaterBreathing(player, breathes));
++}
++
++// GuildAdventure: CP-8
++void ScriptMgr::OnPlayerFallDamage(Player* player, uint32& damage)
++{
++    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_FALL_DAMAGE, script->OnPlayerFallDamage(player, damage));
++}
++
++// GuildAdventure: CP-9
++bool ScriptMgr::OnPlayerCanTakeQuest(Player* player, Quest const* quest)
++{
++    CALL_ENABLED_BOOLEAN_HOOKS(PlayerScript, PLAYERHOOK_ON_CAN_TAKE_QUEST, !script->OnPlayerCanTakeQuest(player, quest));
++}
++
++// GuildAdventure: CP-10
++bool ScriptMgr::OnPlayerCanStartPointMovement(Player* player, PathGenerator const& path, bool usesPath, float x, float y, float z)
++{
++    CALL_ENABLED_BOOLEAN_HOOKS(PlayerScript, PLAYERHOOK_ON_CAN_START_POINT_MOVEMENT,
++        !script->OnPlayerCanStartPointMovement(player, path, usesPath, x, y, z));
++}
++
+ void ScriptMgr::OnPlayerLootItem(Player* player, Item* item, uint32 count, ObjectGuid lootguid)
+ {
+     CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_LOOT_ITEM, script->OnPlayerLootItem(player, item, count, lootguid));
+diff --git a/src/server/game/Scripting/ScriptDefines/PlayerScript.h b/src/server/game/Scripting/ScriptDefines/PlayerScript.h
+index 0d2314edf..a507a0f20 100644
+--- a/src/server/game/Scripting/ScriptDefines/PlayerScript.h
++++ b/src/server/game/Scripting/ScriptDefines/PlayerScript.h
+@@ -21,6 +21,7 @@
+ #include "ScriptObject.h"
+ #include "SharedDefines.h"
+ #include "DBCStructure.h"
++#include "UnitDefines.h"
+ #include <vector>
+ 
+ // TODO to remove
+@@ -37,6 +38,8 @@ namespace WorldPackets::NPC
+     class TrainerList;
+ }
+ 
++class PathGenerator; // GuildAdventure: CP-10
++
+ enum PlayerHook
+ {
+     PLAYERHOOK_ON_PLAYER_JUST_DIED,
+@@ -235,6 +238,14 @@ enum PlayerHook
+     PLAYERHOOK_ON_BEFORE_RECEIVE_SPELL_LIST_FROM_TRAINER,
+     PLAYERHOOK_ON_GET_TRAINER_SPELL_STATE,
+     PLAYERHOOK_ON_AFTER_TRAIN_SPELL,
++    PLAYERHOOK_ON_CHECK_REAGENT,    // GuildAdventure: CP-7
++    PLAYERHOOK_ON_TAKE_REAGENT,     // GuildAdventure: CP-7
++    PLAYERHOOK_ON_UPDATE_SPEED,     // GuildAdventure: CP-8
++    PLAYERHOOK_ON_SPELL_CAST_TIME,  // GuildAdventure: CP-8
++    PLAYERHOOK_ON_CHECK_WATER_BREATHING, // GuildAdventure: CP-8
++    PLAYERHOOK_ON_FALL_DAMAGE,      // GuildAdventure: CP-8
++    PLAYERHOOK_ON_CAN_TAKE_QUEST,   // GuildAdventure: CP-9
++    PLAYERHOOK_ON_CAN_START_POINT_MOVEMENT, // GuildAdventure: CP-10
+     PLAYERHOOK_END
+ };
+ 
+@@ -966,6 +977,120 @@ public:
+      * @param spellId The id of the trainer spell that was bought
+      */
+     virtual void OnPlayerAfterTrainSpell(Player* /*player*/, Creature* /*trainer*/, uint32 /*spellId*/) {}
++
++    // GuildAdventure: CP-7
++    /**
++     * @brief This hook is called when a spell's reagent check finds fewer of a reagent in the player's
++     *        bags than the spell needs (Spell::CheckItems and the item named in SPELL_FAILED_REAGENTS).
++     *
++     * A script may let the cast go ahead with reagents kept outside the bags, for example in a shared
++     * storage: it sets enough when the bags and its own store together hold count. A script that does so
++     * must take the rest in OnPlayerTakeReagent.
++     *
++     * @param player The caster
++     * @param itemId The reagent
++     * @param count How many the spell needs (the bags hold fewer)
++     * @param enough Set to true if the cast may use the reagent anyway
++     */
++    virtual void OnPlayerCheckReagent(Player* /*player*/, uint32 /*itemId*/, uint32 /*count*/, bool& /*enough*/) { }
++
++    // GuildAdventure: CP-7
++    /**
++     * @brief This hook is called in Spell::TakeReagents right before a reagent is destroyed in the player's
++     *        bags, when the bags hold fewer than the spell takes.
++     *
++     * A script that let the cast go ahead in OnPlayerCheckReagent takes the missing part from its own store
++     * here and lowers count by what it took; the core then destroys count of the reagent in the bags.
++     *
++     * @param player The caster
++     * @param itemId The reagent
++     * @param count How many the spell takes from the bags; lower it by what the script took
++     */
++    virtual void OnPlayerTakeReagent(Player* /*player*/, uint32 /*itemId*/, uint32& /*count*/) { }
++
++    // GuildAdventure: CP-8
++    /**
++     * @brief This hook is called in Unit::UpdateSpeed for a player, after the auras made the speed rate and before
++     *        it is set.
++     *
++     * A script may change the rate, for example a permanent movement speed bonus without an aura. Call
++     * Unit::UpdateSpeed for the move type after the bonus changes.
++     *
++     * @param player The player
++     * @param moveType The move type being updated
++     * @param rate The speed rate (1.0 = base speed); change it to change the speed
++     */
++    virtual void OnPlayerUpdateSpeed(Player* /*player*/, UnitMoveType /*moveType*/, float& /*rate*/) { }
++
++    // GuildAdventure: CP-8
++    /**
++     * @brief This hook is called in SpellInfo::CalcCastTime when a player casts, after the core's cast time
++     *        modifiers (haste, spell mods).
++     *
++     * @param player The caster
++     * @param spellInfo The spell
++     * @param castTime The cast time in milliseconds; change it to change the cast time
++     */
++    virtual void OnPlayerSpellCastTime(Player* /*player*/, SpellInfo const* /*spellInfo*/, int32& /*castTime*/) { }
++
++    // GuildAdventure: CP-8
++    /**
++     * @brief This hook is called when the breath timer of a player starts under water (Player::getMaxTimer).
++     *
++     * @param player The player
++     * @param breathes Set to true to let the player breathe under water, as a water breathing aura does
++     */
++    virtual void OnPlayerCheckWaterBreathing(Player* /*player*/, bool& /*breathes*/) { }
++
++    // GuildAdventure: CP-8
++    /**
++     * @brief This hook is called in Player::HandleFall with the fall damage the player would take.
++     *
++     * @param player The player
++     * @param damage The damage; lower it (0 = no fall damage)
++     */
++    virtual void OnPlayerFallDamage(Player* /*player*/, uint32& /*damage*/) { }
++
++    // GuildAdventure: CP-9
++    /**
++     * @brief This hook is called at the end of Player::CanTakeQuest, after every check of the core passed.
++     *
++     * A script may refuse a quest for a player, for example for a server-driven character that cannot
++     * complete it. Player::CanTakeQuest is called often and from map threads (quest giver status, quest
++     * menus, bot AI), so a script must answer fast and must not touch state it does not guard.
++     *
++     * @param player The player who would take the quest
++     * @param quest The quest
++     *
++     * @return False to refuse the quest
++     */
++    [[nodiscard]] virtual bool OnPlayerCanTakeQuest(Player* /*player*/, Quest const* /*quest*/) { return true; }
++
++    // GuildAdventure: CP-10
++    /**
++     * @brief This hook is called before a point movement with a generated path starts for a player
++     *        (MotionMaster::MovePoint; server-driven characters are moved this way).
++     *
++     * The path finder's result is not always a walkable path: with no usable path the movement runs a straight
++     * line to the destination, through whatever is in between. A script may look at the path and cancel the
++     * movement. It runs on the map thread of the player, once per started movement.
++     *
++     * @param player The player that is about to move
++     * @param path The generated path (type flags and points)
++     * @param usesPath True if the movement follows the path's points, false if it would run a straight line
++     *                 from the player to the destination (no path, or a path of only two points)
++     * @param x, y, z The destination
++     *
++     * @return False to cancel the movement (the player stays where it is, the movement generator ends)
++     *
++     * GuildAdventure: CP-13 - a player's chase movement (ChaseMovementGenerator) asks this hook as well before each
++     * spline it starts; false stops that chase movement (the generator stays and tries again).
++     */
++    [[nodiscard]] virtual bool OnPlayerCanStartPointMovement(Player* /*player*/, PathGenerator const& /*path*/, bool /*usesPath*/,
++        float /*x*/, float /*y*/, float /*z*/) { return true; }
+ };
+ 
++// GuildAdventure: CP-8 - modules can test for the hooks above.
++#define GUILDADVENTURE_CP8_PERK_HOOKS 1
++
+ #endif
+diff --git a/src/server/game/Scripting/ScriptDefines/SessionScript.cpp b/src/server/game/Scripting/ScriptDefines/SessionScript.cpp
+index 4b11ea291..7a4a01154 100644
+--- a/src/server/game/Scripting/ScriptDefines/SessionScript.cpp
++++ b/src/server/game/Scripting/ScriptDefines/SessionScript.cpp
+@@ -35,6 +35,24 @@ bool ScriptMgr::OnWardenCheckExpectedResult(WorldSession* session, WardenCheck c
+         script->OnWardenCheckExpectedResult(session, check, expected));
+ }
+ 
++// GuildAdventure:
++bool ScriptMgr::OnSessionLogoutDetach(WorldSession* session, Player* player)
++{
++    ASSERT(session);
++    ASSERT(player);
++
++    CALL_ENABLED_BOOLEAN_HOOKS_WITH_DEFAULT_FALSE(SessionScript, SESSIONHOOK_ON_LOGOUT_DETACH,
++        script->OnSessionLogoutDetach(session, player));
++}
++
++// GuildAdventure:
++void ScriptMgr::OnSessionCharEnum(WorldSession* session, WorldPacket& data, uint8& characterCount)
++{
++    ASSERT(session);
++
++    CALL_ENABLED_HOOKS(SessionScript, SESSIONHOOK_ON_CHAR_ENUM, script->OnSessionCharEnum(session, data, characterCount));
++}
++
+ SessionScript::SessionScript(char const* name, std::vector<uint16> enabledHooks)
+     : ScriptObject(name, SESSIONHOOK_END)
+ {
+diff --git a/src/server/game/Scripting/ScriptDefines/SessionScript.h b/src/server/game/Scripting/ScriptDefines/SessionScript.h
+index 86968dba4..c319ebf1e 100644
+--- a/src/server/game/Scripting/ScriptDefines/SessionScript.h
++++ b/src/server/game/Scripting/ScriptDefines/SessionScript.h
+@@ -25,6 +25,8 @@ enum SessionHook
+ {
+     SESSIONHOOK_ON_UPDATE,
+     SESSIONHOOK_ON_WARDEN_CHECK_EXPECTED_RESULT,
++    SESSIONHOOK_ON_LOGOUT_DETACH,   // GuildAdventure
++    SESSIONHOOK_ON_CHAR_ENUM,       // GuildAdventure
+     SESSIONHOOK_END
+ };
+ 
+@@ -58,6 +60,38 @@ public:
+      */
+     virtual bool OnWardenCheckExpectedResult(WorldSession* /*session*/, WardenCheck const& /*check*/,
+         std::vector<uint8>& /*expected*/) { return false; }
++
++    // GuildAdventure:
++    /**
++     * @brief This hook is called from the world thread at the start of WorldSession::LogoutPlayer, for a session
++     * that has a player, before any logout side effect (and never for a cluster redirect).
++     *
++     * A script may take the player over instead of letting the core remove it from the world, for example by
++     * moving it to another session that a bot AI drives. Before it returns true the script must have detached
++     * the player from this session (session->GetPlayer() == nullptr). The core then only finishes the logout
++     * handshake with the client (SMSG_LOGOUT_COMPLETE) and resets the session's logout state.
++     *
++     * @param session The session that logs out
++     * @param player The session's player
++     * @return true if the script detached the player; the first script returning true wins
++     */
++    [[nodiscard]] virtual bool OnSessionLogoutDetach(WorldSession* /*session*/, Player* /*player*/) { return false; }
++
++    // GuildAdventure:
++    /**
++     * @brief This hook is called from the world thread while SMSG_CHAR_ENUM is built, after the characters of the
++     * session's account were written and before the character count is patched in.
++     *
++     * A script may append further characters (e.g. the guild bot the owner is switching to, which lives on
++     * another account): it writes each row with Player::BuildEnumData and increments characterCount. Appended
++     * characters are not added to the session's legitimate logins; a script that appends one must also handle
++     * the CMSG_PLAYER_LOGIN for it (ServerScript::CanPacketReceive), or the core refuses that login.
++     *
++     * @param session The session that requested the character list
++     * @param data The SMSG_CHAR_ENUM packet, write position at the end of the last character row
++     * @param characterCount The number of character rows in data
++     */
++    virtual void OnSessionCharEnum(WorldSession* /*session*/, WorldPacket& /*data*/, uint8& /*characterCount*/) { }
+ };
+ 
+ #endif
+diff --git a/src/server/game/Scripting/ScriptMgr.h b/src/server/game/Scripting/ScriptMgr.h
+index 217acd90e..7d93461bb 100644
+--- a/src/server/game/Scripting/ScriptMgr.h
++++ b/src/server/game/Scripting/ScriptMgr.h
+@@ -164,6 +164,8 @@ public: /* ServerScript */
+ public: /* SessionScript */
+     void OnSessionUpdate(WorldSession* session, uint32 diff);
+     bool OnWardenCheckExpectedResult(WorldSession* session, WardenCheck const& check, std::vector<uint8>& expected);
++    bool OnSessionLogoutDetach(WorldSession* session, Player* player); // GuildAdventure
++    void OnSessionCharEnum(WorldSession* session, WorldPacket& data, uint8& characterCount); // GuildAdventure
+ 
+ public: /* WorldScript */
+     void OnLoadCustomDatabaseTable();
+@@ -367,6 +369,14 @@ public: /* PlayerScript */
+     void OnPlayerJoinArena(Player* player);
+     void OnPlayerGetMaxPersonalArenaRatingRequirement(Player const* player, uint32 minSlot, uint32& maxArenaRating) const;
+     void OnPlayerLootItem(Player* player, Item* item, uint32 count, ObjectGuid lootguid);
++    void OnPlayerCheckReagent(Player* player, uint32 itemId, uint32 count, bool& enough); // GuildAdventure: CP-7
++    void OnPlayerTakeReagent(Player* player, uint32 itemId, uint32& count); // GuildAdventure: CP-7
++    void OnPlayerUpdateSpeed(Player* player, UnitMoveType moveType, float& rate); // GuildAdventure: CP-8
++    void OnPlayerSpellCastTime(Player* player, SpellInfo const* spellInfo, int32& castTime); // GuildAdventure: CP-8
++    void OnPlayerCheckWaterBreathing(Player* player, bool& breathes); // GuildAdventure: CP-8
++    void OnPlayerFallDamage(Player* player, uint32& damage); // GuildAdventure: CP-8
++    bool OnPlayerCanTakeQuest(Player* player, Quest const* quest); // GuildAdventure: CP-9
++    bool OnPlayerCanStartPointMovement(Player* player, PathGenerator const& path, bool usesPath, float x, float y, float z); // GuildAdventure: CP-10
+     void OnPlayerBeforeFillQuestLootItem(Player* player, LootItem& item);
+     void OnPlayerStoreNewItem(Player* player, Item* item, uint32 count);
+     void OnPlayerCreateItem(Player* player, Item* item, uint32 count);
+diff --git a/src/server/game/Server/Protocol/Opcodes.cpp b/src/server/game/Server/Protocol/Opcodes.cpp
+index c2d99161e..478a578e7 100644
+--- a/src/server/game/Server/Protocol/Opcodes.cpp
++++ b/src/server/game/Server/Protocol/Opcodes.cpp
+@@ -1441,6 +1441,9 @@ void OpcodeTable::Initialize()
+     /*0x51E*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_MULTIPLE_MOVES, STATUS_NEVER);
+     /*0x51F*/ DEFINE_HANDLER(TC9_CMSG_PREPARE_FOR_REDIRECT,                                         STATUS_AUTHED,     PROCESS_THREADUNSAFE,   &WorldSession::HandleTC9PrepareForRedirect);
+     /*0x520*/ DEFINE_SERVER_OPCODE_HANDLER(TC9_SMSG_READY_FOR_REDIRECT, STATUS_NEVER);
++    // GuildAdventure: CP-5, mod-guild-adventure consumes 0x521 in ServerScript::CanPacketReceive (world thread)
++    /*0x521*/ DEFINE_HANDLER(CMSG_GA_CLIENT_MESSAGE,                                                STATUS_AUTHED,     PROCESS_THREADUNSAFE,   &WorldSession::HandleGuildAdventureClientMessage);
++    /*0x522*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_GA_SERVER_MESSAGE, STATUS_NEVER);
+ 
+ #undef DEFINE_HANDLER
+ #undef DEFINE_SERVER_OPCODE_HANDLER
+diff --git a/src/server/game/Server/Protocol/Opcodes.h b/src/server/game/Server/Protocol/Opcodes.h
+index 0b34344c4..f416591cc 100644
+--- a/src/server/game/Server/Protocol/Opcodes.h
++++ b/src/server/game/Server/Protocol/Opcodes.h
+@@ -1340,7 +1340,10 @@ enum Opcodes : uint16
+     SMSG_MULTIPLE_MOVES                             = 0x51E, // uncompressed version of SMSG_COMPRESSED_MOVES
+     TC9_CMSG_PREPARE_FOR_REDIRECT                   = 0x51F,
+     TC9_SMSG_READY_FOR_REDIRECT                     = 0x520,
+-    NUM_MSG_TYPES                                   = 0x521
++    // GuildAdventure: CP-5, take-control client DLL (Path S); payload = uint8 module message type + data
++    CMSG_GA_CLIENT_MESSAGE                          = 0x521,
++    SMSG_GA_SERVER_MESSAGE                          = 0x522,
++    NUM_MSG_TYPES                                   = 0x523
+ };
+ 
+ enum OpcodeMisc : uint16
+diff --git a/src/server/game/Server/WorldSession.cpp b/src/server/game/Server/WorldSession.cpp
+index 5bb2191f1..0948ed35d 100644
+--- a/src/server/game/Server/WorldSession.cpp
++++ b/src/server/game/Server/WorldSession.cpp
+@@ -690,6 +690,24 @@ void WorldSession::LogoutPlayer(bool save, bool redirecting)
+     while (_player && _player->IsBeingTeleportedFar())
+         HandleMoveWorldportAck();
+ 
++    // GuildAdventure: a script may take the player over (e.g. hand a controlled guild bot back to its AI on
++    // another session) instead of removing it from the world. The client still gets its logout handshake.
++    if (_player && !redirecting && sScriptMgr->OnSessionLogoutDetach(this, _player))
++    {
++        if (!_player)
++        {
++            SendPacket(WorldPackets::Character::LogoutComplete().Write());
++            m_playerLogout = false;
++            m_playerSave = false;
++            m_playerRecentlyLogout = true;
++            SetLogoutStartTime(0);
++            return;
++        }
++
++        LOG_ERROR("scripts", "WorldSession::LogoutPlayer: OnSessionLogoutDetach returned true but left {} attached to account {}, logging out normally",
++            _player->GetGUID().ToString(), GetAccountId());
++    }
++
+     m_playerLogout = true;
+     m_playerSave = save;
+ 
+@@ -1659,6 +1677,16 @@ void WorldSession::HandleTC9PrepareForRedirect(WorldPacket& /*recvData*/)
+     });
+ }
+ 
++// GuildAdventure: CP-5, mod-guild-adventure reads CMSG_GA_CLIENT_MESSAGE in ServerScript::CanPacketReceive and stops
++// it there. Reaching this handler means that no module took it (module disabled, or a message type it does not
++// know), so the message is dropped without the error that Handle_NULL would log.
++void WorldSession::HandleGuildAdventureClientMessage(WorldPacket& recvData)
++{
++    LOG_DEBUG("network.opcode", "CMSG_GA_CLIENT_MESSAGE ({} bytes) from {} was not consumed by a module",
++        recvData.size(), GetPlayerInfo());
++    recvData.rfinish();
++}
++
+ void WorldSession::SetPacketLogging(bool state)
+ {
+     if (m_Socket)
+diff --git a/src/server/game/Server/WorldSession.h b/src/server/game/Server/WorldSession.h
+index fdedd02b6..e80259562 100644
+--- a/src/server/game/Server/WorldSession.h
++++ b/src/server/game/Server/WorldSession.h
+@@ -713,6 +713,8 @@ public:                                                 // opcodes handlers
+     void SendSetPlayerDeclinedNamesResult(DeclinedNameResult result, ObjectGuid guid);
+ 
+     void HandleTC9PrepareForRedirect(WorldPacket& recvData);
++    // GuildAdventure: CP-5, fallback for a take-control client message that no module consumed
++    void HandleGuildAdventureClientMessage(WorldPacket& recvData);
+ 
+     // played time
+     void HandlePlayedTime(WorldPackets::Character::PlayedTimeClient& packet);
+diff --git a/src/server/game/Spells/Spell.cpp b/src/server/game/Spells/Spell.cpp
+index ebc0ab1b4..6f23a5918 100644
+--- a/src/server/game/Spells/Spell.cpp
++++ b/src/server/game/Spells/Spell.cpp
+@@ -4798,6 +4798,11 @@ void Spell::WriteCastResultInfo(WorldPacket& data, Player* caster, SpellInfo con
+ 
+                     if (!caster->HasItemCount(itemid, itemcount))
+                     {
++                        // GuildAdventure: CP-7, a reagent kept outside the bags is not missing
++                        bool enough = false;
++                        sScriptMgr->OnPlayerCheckReagent(caster, itemid, itemcount, enough);
++                        if (enough)
++                            continue;
+                         missingItem = itemid;
+                         break;
+                     }
+@@ -5783,6 +5788,10 @@ void Spell::TakeReagents()
+         if (m_targets.GetItemTargetEntry() == itemid)
+             m_targets.SetItemTarget(nullptr);
+ 
++        // GuildAdventure: CP-7, the part the bags lack comes from outside them (a shared storage)
++        if (!p_caster->HasItemCount(itemid, itemcount))
++            sScriptMgr->OnPlayerTakeReagent(p_caster, itemid, itemcount);
++
+         p_caster->DestroyItemCount(itemid, itemcount, true);
+     }
+ }
+@@ -7636,7 +7645,13 @@ SpellCastResult Spell::CheckItems(uint32* param1, uint32* param2)
+                     }
+                 }
+                 if (!player->HasItemCount(itemid, itemcount))
+-                    return SPELL_FAILED_REAGENTS;
++                {
++                    // GuildAdventure: CP-7, the rest may be kept outside the bags (a shared storage)
++                    bool enough = false;
++                    sScriptMgr->OnPlayerCheckReagent(player, itemid, itemcount, enough);
++                    if (!enough)
++                        return SPELL_FAILED_REAGENTS;
++                }
+             }
+         }
+ 
+diff --git a/src/server/game/Spells/SpellInfo.cpp b/src/server/game/Spells/SpellInfo.cpp
+index 84e390079..fed4e9933 100644
+--- a/src/server/game/Spells/SpellInfo.cpp
++++ b/src/server/game/Spells/SpellInfo.cpp
+@@ -2788,6 +2788,10 @@ uint32 SpellInfo::CalcCastTime(WorldObject* caster, Spell* spell) const
+     if (caster)
+         caster->ModSpellCastTime(this, castTime, spell);
+ 
++    // GuildAdventure: CP-8 - a module's cast time bonus for players (guild perks: crafting, gathering)
++    if (Player* player = caster ? caster->ToPlayer() : nullptr)
++        sScriptMgr->OnPlayerSpellCastTime(player, this, castTime);
++
+     return (castTime > 0) ? uint32(castTime) : 0;
+ }
+ 
+diff --git a/src/server/game/World/WorldConfig.cpp b/src/server/game/World/WorldConfig.cpp
+index e5999f9dc..ccc3f2d08 100644
+--- a/src/server/game/World/WorldConfig.cpp
++++ b/src/server/game/World/WorldConfig.cpp
+@@ -573,6 +573,11 @@ void WorldConfig::BuildConfigCache()
+     SetConfigValue<bool>(CONFIG_SHOW_MUTE_IN_WORLD, "ShowMuteInWorld", false);
+     SetConfigValue<bool>(CONFIG_SHOW_BAN_IN_WORLD, "ShowBanInWorld", false);
+     SetConfigValue<uint32>(CONFIG_NUMTHREADS, "MapUpdate.Threads", 1);
++    // GuildAdventure: CP-11 - characters without a client (bots): Player::Update once every this many ms, at a phase of
++    // their own (0 = every world tick, as for a client)
++    SetConfigValue<uint32>(CONFIG_BOTS_UPDATE_INTERVAL, "Bots.UpdateInterval", 75);
++    // GuildAdventure: CP-12 - and a smaller range of cells they keep awake on continents (0 = the map's visibility range)
++    SetConfigValue<float>(CONFIG_BOTS_GRID_ACTIVATION_RANGE, "Bots.GridActivationRange", 0.0f, ConfigValueCache::Reloadable::Yes, [](float const& value) { return value >= 0.0f; }, ">= 0");
+     SetConfigValue<uint32>(CONFIG_MAX_RESULTS_LOOKUP_COMMANDS, "Command.LookupMaxResults", 0);
+ 
+     // Warden
+diff --git a/src/server/game/World/WorldConfig.h b/src/server/game/World/WorldConfig.h
+index 4b6bf0075..492c4f597 100644
+--- a/src/server/game/World/WorldConfig.h
++++ b/src/server/game/World/WorldConfig.h
+@@ -519,6 +519,10 @@ enum ServerConfigs
+ 
+     CONFIG_CAIS_ENABLED,
+ 
++    // GuildAdventure: CP-11, CP-12 - characters without a client (bots)
++    CONFIG_BOTS_UPDATE_INTERVAL,
++    CONFIG_BOTS_GRID_ACTIVATION_RANGE,
++
+     MAX_NUM_SERVER_CONFIGS
+ };
+ 

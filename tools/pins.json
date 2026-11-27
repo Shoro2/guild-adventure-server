@@ -1,0 +1,29 @@
+{
+  "core": {
+    "repo": "https://github.com/mod-playerbots/azerothcore-wotlk.git",
+    "branch": "Playerbot",
+    "commit": "e7e2e288e7d9ec30e2dfe6f417178a95986fcbb2",
+    "patches": [
+      "patches/azerothcore/0001-guild-adventure-core.patch"
+    ]
+  },
+  "playerbots": {
+    "repo": "https://github.com/mod-playerbots/mod-playerbots.git",
+    "branch": "master",
+    "commit": "405f81196161017eebae3ee7a612d786a3ed2a9d"
+  },
+  "modules": [
+    {
+      "name": "mod-ah-bot-plus",
+      "repo": "https://github.com/NathanHandley/mod-ah-bot-plus.git",
+      "branch": "master",
+      "commit": "f685832994c825f90aa5a3dc0e1620aa568e875b"
+    },
+    {
+      "name": "mod-autolearn-skills",
+      "repo": "https://github.com/poorhatsoap/mod-autolearn-skills.git",
+      "branch": "main",
+      "commit": "394e6349b883b104ac3c03d832263be04e6a0e0a"
+    }
+  ]
+}

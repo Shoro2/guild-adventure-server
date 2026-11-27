@@ -1,0 +1,32 @@
+## Interface: 30300
+## Title: Guild Adventure
+## Notes: Management UI for the Guild Adventure server: guild bots, orders, professions, progression and take-control.
+## Author: Shoro2
+## Version: 0.1.0
+## SavedVariables: GuildAdventureDB
+
+Core.lua
+Data.lua
+Codec.lua
+Transport.lua
+State.lua
+Protocol.lua
+MockServer.lua
+UI\Widgets.lua
+UI\MainFrame.lua
+UI\LeaderPanel.lua
+UI\Overview.lua
+UI\Roster.lua
+UI\BotDetail.lua
+UI\Recruitment.lua
+UI\Progression.lua
+UI\Achievements.lua
+UI\Perks.lua
+UI\Storage.lua
+UI\Crafting.lua
+UI\Talents.lua
+UI\Behaviour.lua
+UI\Extras.lua
+UI\ControlBar.lua
+UI\WatchMode.lua
+UI\AwaySummary.lua

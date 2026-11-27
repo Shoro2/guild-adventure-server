@@ -1,0 +1,21 @@
+* text=auto
+
+*.cpp  text eol=lf
+*.h    text eol=lf
+*.sql  text eol=lf
+*.md   text eol=lf
+*.dist text eol=lf
+*.txt  text eol=lf
+# patches for third-party checkouts (git apply wants the files' own LF endings)
+*.patch text eol=lf
+
+# WoW client reads addon files fine with CRLF; keep Windows line endings for them
+*.lua  text eol=crlf
+*.xml  text eol=crlf
+*.toc  text eol=crlf
+
+*.ps1  text eol=crlf
+
+*.blp  binary
+*.tga  binary
+*.mpq  binary

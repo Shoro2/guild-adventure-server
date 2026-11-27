@@ -1,0 +1,14 @@
+<Bindings>
+	<Binding name="GUILDADVENTURE_TOGGLE" header="GUILDADVENTURE">
+		GuildAdventure.UI.Toggle();
+	</Binding>
+	<Binding name="GUILDADVENTURE_ROSTER">
+		GuildAdventure.UI.Show("roster");
+	</Binding>
+	<Binding name="GUILDADVENTURE_RETURN">
+		GuildAdventure.UI.ReturnControl();
+	</Binding>
+	<Binding name="GUILDADVENTURE_WATCH">
+		GuildAdventure.UI.ToggleWatch();
+	</Binding>
+</Bindings>

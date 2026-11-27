@@ -1,0 +1,184 @@
+diff --git a/conf/playerbots.conf.dist b/conf/playerbots.conf.dist
+index bfe9155b..2b626534 100644
+--- a/conf/playerbots.conf.dist
++++ b/conf/playerbots.conf.dist
+@@ -2605,6 +2605,11 @@ Playerbots.TellWhenAvoidAoe = 0
+ # Enable/Disable performance monitor
+ Playerbots.PerfMonEnabled = 0
+ 
++# Skip triggers that have nothing to check (a chat command trigger without a pending command):
++# no check, no performance monitor call. The same events either way.
++# Default: 1 (enabled)
++Playerbots.SkipIdleTriggers = 1
++
+ #
+ #
+ ####################################################################################################
+diff --git a/src/Ai/Base/Trigger/ChatCommandTrigger.h b/src/Ai/Base/Trigger/ChatCommandTrigger.h
+index cdd34004..35edfbd7 100644
+--- a/src/Ai/Base/Trigger/ChatCommandTrigger.h
++++ b/src/Ai/Base/Trigger/ChatCommandTrigger.h
+@@ -22,6 +22,8 @@ public:
+     void ExternalEvent(std::string const param, Player* owner = nullptr) override;
+     Event Check() override;
+     void Reset() override;
++    // Check() returns an empty event unless a command set `triggered`.
++    bool IsIdle() override { return !triggered; }
+ 
+ private:
+     std::string param;
+diff --git a/src/Bot/Engine/Engine.cpp b/src/Bot/Engine/Engine.cpp
+index 368994d9..7a4537bb 100644
+--- a/src/Bot/Engine/Engine.cpp
++++ b/src/Bot/Engine/Engine.cpp
+@@ -218,7 +218,8 @@ bool Engine::DoNextAction(Unit* /*unit*/, uint32 /*depth*/, bool minimal)
+                     }
+                 }
+ 
+-                PerfMonitorOperation* pmo = sPerfMonitor.start(PERF_MON_ACTION, action->getName(), &aiObjectContext->performanceStack);
++                PerfMonitorOperation* pmo = PerfMonitor::IsEnabled() ?
++                    sPerfMonitor.start(PERF_MON_ACTION, action->getName(), &aiObjectContext->performanceStack) : nullptr;
+                 actionExecuted = ListenAndExecute(action, event);
+                 if (pmo)
+                     pmo->finish();
+@@ -450,7 +451,17 @@ Strategy* Engine::GetStrategy(std::string const name)
+ 
+ void Engine::ProcessTriggers(bool minimal)
+ {
+-    std::unordered_map<Trigger*, Event> fires;
++    // The triggers that fired: a few per pass, so a small vector (a hash map was built per pass).
++    std::vector<std::pair<Trigger*, Event>> fires;
++    auto fired = [&fires](Trigger* trigger) -> Event*
++    {
++        for (auto& [firedTrigger, event] : fires)
++            if (firedTrigger == trigger)
++                return &event;
++        return nullptr;
++    };
++    bool const skipIdle = !testMode && sPlayerbotAIConfig.SkipIdleTriggers;
++    bool const perfMon = PerfMonitor::IsEnabled();
+     uint32 now = getMSTime();
+     for (std::vector<TriggerNode*>::iterator i = triggers.begin(); i != triggers.end(); i++)
+     {
+@@ -468,7 +479,12 @@ void Engine::ProcessTriggers(bool minimal)
+         if (!trigger)
+             continue;
+ 
+-        if (fires.find(trigger) != fires.end())
++        if (fired(trigger))
++            continue;
++
++        // Nothing to check (a chat command trigger without a pending command: most triggers of every bot, five
++        // times a second): its check would return an empty event.
++        if (skipIdle && trigger->IsIdle())
+             continue;
+ 
+         if (testMode || trigger->needCheck(now))
+@@ -476,8 +492,9 @@ void Engine::ProcessTriggers(bool minimal)
+             if (minimal && node->getFirstRelevance() < 100)
+                 continue;
+ 
+-            PerfMonitorOperation* pmo =
+-                sPerfMonitor.start(PERF_MON_TRIGGER, trigger->getName(), &aiObjectContext->performanceStack);
++            // (The monitor's name is a string copy per check: only while the monitor is on.)
++            PerfMonitorOperation* pmo = perfMon ?
++                sPerfMonitor.start(PERF_MON_TRIGGER, trigger->getName(), &aiObjectContext->performanceStack) : nullptr;
+             Event event = trigger->Check();
+             if (pmo)
+                 pmo->finish();
+@@ -488,20 +505,22 @@ void Engine::ProcessTriggers(bool minimal)
+             if (trigger->IsBuffTrigger() && !trigger->IsDebuffTrigger())
+                 botAI->forceRebuff.NoteBuffProposed();
+ 
+-            fires[trigger] = event;
++            fires.emplace_back(trigger, event);
+             LogAction("T:%s", trigger->getName().c_str());
+         }
+     }
+ 
+-    for (std::vector<TriggerNode*>::iterator i = triggers.begin(); i != triggers.end(); i++)
++    if (!fires.empty())
+     {
+-        TriggerNode* node = *i;
+-        Trigger* trigger = node->getTrigger();
+-        if (fires.find(trigger) == fires.end())
+-            continue;
++        for (std::vector<TriggerNode*>::iterator i = triggers.begin(); i != triggers.end(); i++)
++        {
++            TriggerNode* node = *i;
++            Event const* event = fired(node->getTrigger());
++            if (!event)
++                continue;
+ 
+-        Event event = fires[trigger];
+-        MultiplyAndPush(node->getHandlers(), 0.0f, false, event, "trigger");
++            MultiplyAndPush(node->getHandlers(), 0.0f, false, *event, "trigger");
++        }
+     }
+ 
+     for (std::vector<TriggerNode*>::iterator i = triggers.begin(); i != triggers.end(); i++)
+diff --git a/src/Bot/Engine/Trigger/Trigger.h b/src/Bot/Engine/Trigger/Trigger.h
+index 9c139761..81c3b276 100644
+--- a/src/Bot/Engine/Trigger/Trigger.h
++++ b/src/Bot/Engine/Trigger/Trigger.h
+@@ -29,6 +29,8 @@ public:
+     virtual bool IsActive() { return false; }
+     virtual bool IsBuffTrigger() { return false; }
+     virtual bool IsDebuffTrigger() { return false; }
++    // True when a check could not fire now (a chat command trigger without a pending command): the engine skips it.
++    virtual bool IsIdle() { return false; }
+     virtual std::vector<NextAction> getHandlers() { return {}; }
+     void Update() {}
+     virtual void Reset() {}
+diff --git a/src/Bot/Engine/Value/Value.cpp b/src/Bot/Engine/Value/Value.cpp
+index 9fea17eb..cceb9b69 100644
+--- a/src/Bot/Engine/Value/Value.cpp
++++ b/src/Bot/Engine/Value/Value.cpp
+@@ -123,8 +123,8 @@ Unit* UnitCalculatedValue::Get()
+ {
+     if (checkInterval < 2)
+     {
+-        PerfMonitorOperation* pmo = sPerfMonitor.start(
+-            PERF_MON_VALUE, this->getName(), this->context ? &this->context->performanceStack : nullptr);
++        PerfMonitorOperation* pmo = PerfMonitor::IsEnabled() ? sPerfMonitor.start(
++            PERF_MON_VALUE, this->getName(), this->context ? &this->context->performanceStack : nullptr) : nullptr;
+         value = Calculate();
+         if (pmo)
+             pmo->finish();
+@@ -135,8 +135,8 @@ Unit* UnitCalculatedValue::Get()
+         if (!lastCheckTime || now - lastCheckTime >= checkInterval)
+         {
+             lastCheckTime = now;
+-            PerfMonitorOperation* pmo = sPerfMonitor.start(
+-                PERF_MON_VALUE, this->getName(), this->context ? &this->context->performanceStack : nullptr);
++            PerfMonitorOperation* pmo = PerfMonitor::IsEnabled() ? sPerfMonitor.start(
++                PERF_MON_VALUE, this->getName(), this->context ? &this->context->performanceStack : nullptr) : nullptr;
+             value = Calculate();
+             if (pmo)
+                 pmo->finish();
+diff --git a/src/PlayerbotAIConfig.cpp b/src/PlayerbotAIConfig.cpp
+index 68a66702..078f3612 100644
+--- a/src/PlayerbotAIConfig.cpp
++++ b/src/PlayerbotAIConfig.cpp
+@@ -492,6 +492,7 @@ bool PlayerbotAIConfig::Initialize()
+ 
+     CommandServerPort = sConfigMgr->GetOption<int32>("Playerbots.CommandServerPort", 8888);
+     PerfMonEnabled = sConfigMgr->GetOption<bool>("Playerbots.PerfMonEnabled", false);
++    SkipIdleTriggers = sConfigMgr->GetOption<bool>("Playerbots.SkipIdleTriggers", true);
+ 
+     UseGroundMountAtMinLevel = sConfigMgr->GetOption<int32>("Playerbots.UseGroundMountAtMinLevel", 20);
+     UseFastGroundMountAtMinLevel = sConfigMgr->GetOption<int32>("Playerbots.UseFastGroundMountAtMinLevel", 40);
+diff --git a/src/PlayerbotAIConfig.h b/src/PlayerbotAIConfig.h
+index 3ba1f905..8bc261c7 100644
+--- a/src/PlayerbotAIConfig.h
++++ b/src/PlayerbotAIConfig.h
+@@ -351,6 +351,9 @@ public:
+ 
+     uint32 CommandServerPort;
+     bool PerfMonEnabled;
++    // Engine::ProcessTriggers skips a trigger that has nothing to check (Trigger::IsIdle: a chat command trigger
++    // without a pending command). Same events either way; a switch for comparisons.
++    bool SkipIdleTriggers;
+     bool SummonWhenGroup;
+     ShowHideCosmetic RandomBotShowHelmet;
+     ShowHideCosmetic RandomBotShowCloak;
