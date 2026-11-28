@@ -199,6 +199,10 @@ function State.BotCount()
 end
 
 function State.GetBot(g)
+    -- The guild leader has a bot's record too (LEADER^ldr): the roster and the bot detail show him like a bot.
+    if g and State.leader.ldr and State.leader.g == g then
+        return State.leader
+    end
     return g and State.bots[g]
 end
 

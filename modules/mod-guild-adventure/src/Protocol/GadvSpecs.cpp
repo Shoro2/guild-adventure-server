@@ -42,7 +42,7 @@ void GadvProtocol::OnSpecSet(uint32 accountId, AdventureGuild& guild, Message co
     std::optional<int64> const g = message.GetInt("g");
     std::optional<int64> const t = message.GetInt("t");
     ObjectGuid const guid = g ? ObjectGuid::Create<HighGuid::Player>(uint32(*g)) : ObjectGuid::Empty;
-    GuildBot const* bot = g ? guild.FindBot(guid) : nullptr;
+    GuildBot const* bot = g ? guild.FindMember(guid) : nullptr;
     if (!bot || !t || *t < 0)
     {
         Error(accountId, r, bot ? "BAD_REQUEST" : "NOT_OWNER", bot ? "No template given." : "That character is not one of your guild bots.");

@@ -206,6 +206,7 @@ void GuildAdventure::LoadSettings()
     settings.budgetBotAllowance = sConfigMgr->GetOption<uint32>("GuildAdventure.Budget.BotAllowance", 10000);
     settings.budgetMemberPercent = std::min<uint32>(sConfigMgr->GetOption<uint32>("GuildAdventure.Budget.MemberPercent", 50), 100);
     settings.guildTaxPercent = std::min<uint32>(sConfigMgr->GetOption<uint32>("GuildAdventure.Guild.TaxPercent", 10), 100);
+    settings.perksGoldPerPoint = sConfigMgr->GetOption<uint32>("GuildAdventure.Perks.GoldPerPoint", 100);
     settings.unlocksPayFrom = std::min<uint32>(sConfigMgr->GetOption<uint32>("GuildAdventure.Unlocks.PayFrom", 0), 2);
     settings.guildTaxHandovers = sConfigMgr->GetOption<bool>("GuildAdventure.Guild.TaxHandovers", false);
     settings.dungeonsOpenDoors = sConfigMgr->GetOption<bool>("GuildAdventure.Dungeons.OpenDoors", true);

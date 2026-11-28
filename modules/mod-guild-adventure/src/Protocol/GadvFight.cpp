@@ -180,7 +180,7 @@ namespace
     {
         std::optional<int64> const g = message.GetInt("g");
         guid = g ? ObjectGuid::Create<HighGuid::Player>(uint32(*g)) : ObjectGuid::Empty;
-        return g ? guild.FindBot(guid) : nullptr;
+        return g ? guild.FindMember(guid) : nullptr;
     }
 
     Player* InWorld(ObjectGuid guid)
@@ -193,7 +193,7 @@ namespace
 // Block FPROFILES: the guild's fight profiles of a bot's class, with the bot's two slots.
 void GadvProtocol::SendFightProfiles(uint32 accountId, AdventureGuild& guild, ObjectGuid bot)
 {
-    GuildBot const* member = guild.FindBot(bot);
+    GuildBot const* member = guild.FindMember(bot);
     if (!member)
         return;
     Player* player = InWorld(bot);
@@ -225,7 +225,7 @@ void GadvProtocol::SendFightProfiles(uint32 accountId, AdventureGuild& guild, Ob
 // the bot (read from its strategies: only while it is in the world).
 void GadvProtocol::SendFightProfile(uint32 accountId, AdventureGuild& guild, ObjectGuid bot, uint32 id)
 {
-    GuildBot const* member = guild.FindBot(bot);
+    GuildBot const* member = guild.FindMember(bot);
     if (!member)
         return;
     Player* player = InWorld(bot);
@@ -305,7 +305,7 @@ void GadvProtocol::OnFightAssign(uint32 accountId, AdventureGuild& guild, Messag
         for (int64 low : *to)
         {
             ObjectGuid const target = ObjectGuid::Create<HighGuid::Player>(uint32(low));
-            GuildBot const* other = guild.FindBot(target);
+            GuildBot const* other = guild.FindMember(target);
             if (!other || other->classId != bot->classId || target == guid)
                 continue;
             for (FP::Slot slot : { FP::Slot::Solo, FP::Slot::Group })
@@ -640,7 +640,7 @@ void GadvProtocol::OnFightDelete(uint32 accountId, AdventureGuild& guild, Messag
 // mod-playerbots in plain language): what the editor offers (FP-3).
 void GadvProtocol::SendFightCatalog(uint32 accountId, AdventureGuild& guild, ObjectGuid bot)
 {
-    GuildBot const* member = guild.FindBot(bot);
+    GuildBot const* member = guild.FindMember(bot);
     if (!member)
         return;
     std::vector<Message> conditions;

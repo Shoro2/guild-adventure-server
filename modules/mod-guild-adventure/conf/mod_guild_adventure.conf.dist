@@ -1430,6 +1430,16 @@ GuildAdventure.Guild.TaxPercent = 10
 
 GuildAdventure.Unlocks.PayFrom = 0
 
+#
+#    GuildAdventure.Perks.GoldPerPoint
+#        Description: A guild perk can be bought with gold instead of guild points (an endgame gold sink): each guild
+#                     point of its rank costs this many gold, paid as an unlock is (GuildAdventure.Unlocks.PayFrom:
+#                     the guild bank, else the leader). 100 = a perk of 100 points costs 10,000 gold. 0 = perks only
+#                     for guild points.
+#        Default:     100
+
+GuildAdventure.Perks.GoldPerPoint = 100
+
 #    GuildAdventure.Guild.TaxHandovers
 #        Description: Money a bot gets by trade or mail from the owner's own characters or another character of
 #                     the guild: taxed too (1) or untaxed, being no income (0: it was taxed when it was earned).

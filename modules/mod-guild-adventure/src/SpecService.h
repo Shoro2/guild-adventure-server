@@ -81,6 +81,8 @@ namespace GuildAdventure
 
         // What is stored for the bot (SpecDefault when nothing is).
         uint32 GetAssigned(ObjectGuid botGuid) const;
+        // Whether the guild leader chose anything for it (the leader keeps his own talents until he does).
+        bool HasAssignment(ObjectGuid botGuid) const { return _assigned.count(botGuid.GetCounter()) != 0; }
         // The template the bot plays by; nullptr = manual, or the class has none. On a dungeon run with a dungeon
         // role: the template of the role.
         SpecTemplate const* GetEffective(ObjectGuid botGuid, uint8 classId) const;

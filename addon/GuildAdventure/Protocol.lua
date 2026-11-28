@@ -667,8 +667,8 @@ function Protocol.BuyUnlock(id, cb)
 end
 
 -- Guild perks (docs/protocol.md §7.15): the next rank of perk `id`, paid with guild points.
-function Protocol.BuyPerk(id, cb)
-    return Protocol.Request("PERK_BUY", { id = id }, cb)
+function Protocol.BuyPerk(id, cb, withGold)
+    return Protocol.Request("PERK_BUY", { id = id, gold = withGold and true or nil }, cb)
 end
 
 -- Craft orders of the guild (docs/protocol.md §7.21): "make n x item"; a bot that knows a recipe makes it on its next

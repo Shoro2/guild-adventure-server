@@ -1359,7 +1359,7 @@ local function Create(parent)
         if not bot then
             return
         end
-        if bot.s == "controlled" then
+        if bot.s == "controlled" or bot.ldr then
             UI.ReturnControl()
         else
             UI.TakeControl(bot.g)
@@ -1425,7 +1425,19 @@ local function RefreshHeader(f, bot)
     f.why:SetText("|cffffd100Now:|r " .. (bot.why or ""))
 
     local connected = State.IsConnected()
-    if bot.s == "controlled" then
+    if bot.ldr then
+        f.bench:Hide()
+        f.dismiss:Hide()
+    else
+        f.bench:Show()
+        f.dismiss:Show()
+    end
+    if bot.ldr then
+        -- The guild leader: no bench, no dismissal; the button plays him again.
+        local playing = bot.s == "controlled" or State.control.g == bot.g or not State.control.g
+        f.control:SetText(playing and "Your leader" or "Return to leader")
+        W.SetEnabled(f.control, connected and not State.control.busy and not playing and bot.s ~= "offline")
+    elseif bot.s == "controlled" then
         f.control:SetText("Return to leader")
         W.SetEnabled(f.control, connected and not State.control.busy)
     else

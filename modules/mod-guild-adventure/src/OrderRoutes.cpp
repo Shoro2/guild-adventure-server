@@ -746,6 +746,42 @@ bool OrderService::OwnStep(Player* player, BotTask& task, uint32 mapId, float x,
     // The path ends short of the target: a hand-listed crossing of a gap in the path finder's ground leads on, perhaps.
     if ((path.GetPathType() & (PATHFIND_INCOMPLETE | PATHFIND_NOPATH)) && BridgeGap(player, task, x, y, z))
         return true;
+    // The core's path finder gives up after its limit of polygons, and in a city's dense navmesh a way of 80 yd is past it:
+    // a paladin in Stormwind's Trade District on its way to the harbour had every step towards its route's next point
+    // handed out as a straight line ("normal + not using a path"), refused, and it left its route and stood, while the
+    // whole navmesh has a way of 84 yd there (2026-11-28, the owner's test). The whole navmesh's way then gives the step: a
+    // point a step's length along it, which the core's path finder reaches.
+    constexpr uint32 NoWholePath = PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH | PATHFIND_SHORTCUT | PATHFIND_INCOMPLETE;
+    if (((path.GetPathType() & NoWholePath) || points.size() < 2) && !player->GetTransport())
+    {
+        NavPoint step;
+        float length = 0.0f;
+        float const straight = player->GetExactDist(x, y, z);
+        if (sDungeonNav.PointAlong(player->GetMapId(), player->GetPositionX(), player->GetPositionY(), player->GetPositionZ(), x, y, z,
+                StepYards, step, &length, nullptr, player->GetMap()) && !step.drop && length <= straight * 3.0f + 60.0f &&
+            player->GetExactDist(step.x, step.y, step.z) >= 3.0f)
+        {
+            PathGenerator toStep(player);
+            toStep.CalculatePath(step.x, step.y, step.z, false);
+            if (!(toStep.GetPathType() & NoWholePath) && toStep.GetPath().size() >= 2)
+            {
+                if (BotDriver::GetRpgState(player) != RpgState::Rest)
+                    BotDriver::Rest(player);
+                ++task.ownMade;
+                task.ownStepAt = now;
+                task.ownStepX = step.x;
+                task.ownStepY = step.y;
+                task.ownStepZ = step.z;
+                if (GetSettings().debug)
+                    LOG_INFO(ActivityLog, "activity: {} own step {} along the navmesh's way ({:.0f} yd) to ({:.0f}, {:.0f}, {:.0f}): the "
+                        "path finder has no whole way to ({:.0f}, {:.0f}, {:.0f}) (path type {:#x})", player->GetName(), task.ownMade, length,
+                        step.x, step.y, step.z, x, y, z, uint32(path.GetPathType()));
+                player->GetMotionMaster()->MovePoint(0, step.x, step.y, step.z);
+                BotDriver::PauseAI(player, HoldMs);
+                return true;
+            }
+        }
+    }
     if ((path.GetPathType() & PATHFIND_NOPATH) || points.size() < 2)
         return fail("no path", 0.0f);
     // A straight line the core hands out for want of a path is no step (a warlock's own steps "began" 55 times on the

@@ -605,11 +605,6 @@ void RoleService::Save(ObjectGuid bot, BotRole const& state, Player* player, boo
 
 bool RoleService::SetRole(AdventureGuild& guild, GuildBot const& bot, DungeonRole role, uint32 templateId, std::string& error)
 {
-    if (bot.guid == guild.leader)
-    {
-        error = "the guild leader takes no dungeon role";
-        return false;
-    }
     if (role != DungeonRole::None)
     {
         std::vector<DungeonRole> const roles = RolesOf(guild.ownerAccount, bot.classId);
@@ -1379,7 +1374,7 @@ bool RoleService::LeaveDungeonMode(GuildBot const& bot, Player* player)
 void RoleService::Step(AdventureGuild& guild, GuildBot const& bot, Player* player, bool onRun)
 {
     BotRole* state = Find(bot.guid);
-    if (!state || !GetSettings().rolesEnable || bot.guid == guild.leader)
+    if (!state || !GetSettings().rolesEnable)
         return;
 
     // The dungeon set is on without a run (the server stopped in the middle of one, the order was changed): back.

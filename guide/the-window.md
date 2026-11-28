@@ -29,7 +29,8 @@ unlocks them.
 
 ## The bot's details
 
-Click a bot on the roster. The header shows its "why" line and the buttons **Take control**, **Bench** /
+Click a bot on the roster (your guild leader is its first row and has the same details, without Bench and Dismiss).
+The header shows its "why" line and the buttons **Take control**, **Bench** /
 **Activate** (a benched bot logs out and keeps its slot) and **Dismiss** (see below). The sub-tabs:
 
 | Sub-tab | What you do there |

@@ -15,6 +15,7 @@ local ICONS = {
     no_reagents = "Interface\\Icons\\INV_Misc_Dust_01",
     instant_flight = "Interface\\Icons\\Ability_Mount_Gryphon_01",
     all_flight_paths = "Interface\\Icons\\INV_Misc_Map_01",
+    shared_flight_paths = "Interface\\Icons\\INV_Letter_08",
     materials_storage = "Interface\\Icons\\INV_Misc_Bag_10",
     drop_chance = "Interface\\Icons\\INV_Misc_Gem_01",
     craft_speed = "Interface\\Icons\\Trade_BlackSmithing",
@@ -32,11 +33,23 @@ local function CanBuy(p)
     return State.IsConnected() and p.avail and (p.rank or 0) < (p.max or 0) and Points() >= (p.cost or 0)
 end
 
-local function BuyPerk(p)
+-- A perk bought with gold (STATE^gpgold copper per guild point, paid as an unlock: STATE^ulgold).
+local function GoldPrice(p)
+    return (p.cost or 0) * (State.guild.gpgold or 0)
+end
+
+local function CanBuyGold(p)
+    local price = GoldPrice(p)
+    return State.IsConnected() and p.avail and (p.rank or 0) < (p.max or 0) and price > 0 and
+        (State.guild.ulgold or State.guild.bank or 0) >= price
+end
+
+local function BuyPerk(p, withGold)
     local nextRank = (p.rank or 0) + 1
     local what = (p.n or "this perk") .. ((p.max or 1) > 1 and (" rank " .. nextRank) or "")
-    UI.Confirm("Spend " .. (p.cost or 0) .. " guild points on " .. what .. ": " .. (p.next or "") .. "?", function()
-        GA.Protocol.BuyPerk(p.id, UI.RequestCallback("Bought " .. what .. "."))
+    local cost = withGold and GetCoinTextureString(GoldPrice(p)) or ((p.cost or 0) .. " guild points")
+    UI.Confirm("Spend " .. cost .. " on " .. what .. ": " .. (p.next or "") .. "?", function()
+        GA.Protocol.BuyPerk(p.id, UI.RequestCallback("Bought " .. what .. "."), withGold)
     end)
 end
 
@@ -54,6 +67,14 @@ local function CreateRow(list, index)
         end
     end)
     row.buy:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    row.gold = W.Button(row, "Gold", 96, 22, function(self)
+        local p = self:GetParent().perk
+        if p then
+            BuyPerk(p, true)
+        end
+    end)
+    row.gold:SetPoint("RIGHT", row.buy, "LEFT", -4, 0)
+    W.SetTooltip(row.gold, "Buy with gold", { "Buys the next rank with gold instead of guild points (paid like a gold unlock)." })
     row.name = W.Label(row, "", "GameFontNormal")
     row.name:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, 1)
     row.name:SetWidth(200)
@@ -62,7 +83,7 @@ local function CreateRow(list, index)
     row.rank:SetWidth(90)
     row.effect = W.Label(row, "", "GameFontHighlightSmall")
     row.effect:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 8, 0)
-    row.effect:SetPoint("RIGHT", row.buy, "LEFT", -8, 0)
+    row.effect:SetPoint("RIGHT", row.gold, "LEFT", -8, 0)
     W.SetTooltip(row, function(self)
         return self.perk and self.perk.n or nil
     end, function(self)
@@ -112,9 +133,18 @@ local function UpdateRow(row, p)
     if rank >= max then
         row.buy:SetText("Max")
         W.SetEnabled(row.buy, false)
+        row.gold:Hide()
     else
         row.buy:SetText("Buy (" .. (p.cost or 0) .. ")")
         W.SetEnabled(row.buy, CanBuy(p))
+        local price = GoldPrice(p)
+        if price > 0 then
+            row.gold:SetText(math.floor(price / 10000) .. "g")
+            W.SetEnabled(row.gold, CanBuyGold(p))
+            row.gold:Show()
+        else
+            row.gold:Hide()
+        end
     end
 end
 

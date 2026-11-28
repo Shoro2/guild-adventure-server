@@ -200,7 +200,8 @@ INSERT INTO `ga_perk_template` (`id`, `perk_key`, `name`, `costs`, `vals`, `unit
 (11, 'craft_speed',       'Master Crafters',    '50,100,200,350,500', '10,20,30,40,50', '%', '+{}% crafting speed'),
 (12, 'gather_speed',      'Quick Hands',        '50,100,200,350,500', '10,20,30,40,50', '%', '+{}% mining, herb gathering and skinning speed'),
 (13, 'water_breathing',   'Gills',              '100',                '1',              '',  'breathe under water'),
-(14, 'no_fall_damage',    'Feather Light',      '100',                '1',              '',  'no fall damage');
+(14, 'no_fall_damage',    'Feather Light',      '100',                '1',              '',  'no fall damage'),
+(15, 'shared_flight_paths', 'Shared Maps',      '150',                '1',              '',  'a flight path one character of the guild discovers, all of its side know');
 
 -- Quests characters the AI plays do not take, because the order planner cannot finish them or has no use for them
 -- (QuestSupport, docs/orders.md "Quests the bots leave alone"). A hand-checked list: add a row to keep bots off a quest,

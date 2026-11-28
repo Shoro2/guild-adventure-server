@@ -1188,7 +1188,7 @@ namespace
     void PushPlaying(Player* player)
     {
         if (GuildAdventure::AdventureGuild* guild = sGuildAdventureMgr.FindGuildOfMember(player->GetGUID()))
-            if (guild->FindBot(player->GetGUID()))
+            if (guild->FindMember(player->GetGUID()))
                 GuildAdventure::PushBot(*guild, player->GetGUID(), false);
     }
 

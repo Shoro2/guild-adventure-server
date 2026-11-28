@@ -637,8 +637,8 @@ void GuildAdventureMgr::LoadProfessions()
     {
         Field* fields = result->Fetch();
         ObjectGuid const guid = ObjectGuid::Create<HighGuid::Player>(fields[0].Get<uint32>());
-        AdventureGuild* guild = FindGuildOfBot(guid);
-        GuildBot* bot = guild ? guild->FindBot(guid) : nullptr;
+        AdventureGuild* guild = FindGuildOfMember(guid);
+        GuildBot* bot = guild ? guild->FindMember(guid) : nullptr;
         if (!bot)
             continue;
 

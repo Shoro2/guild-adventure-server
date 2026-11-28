@@ -42,6 +42,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <string>
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -69,6 +70,7 @@ namespace GuildAdventure
         GatherSpeed,
         WaterBreathing,
         NoFallDamage,
+        SharedFlightPaths,
         Count
     };
 
@@ -123,7 +125,10 @@ public:
     uint32 GetGranted(uint32 owner) const;                                // GM grants
     uint32 GetAvailable(GuildAdventure::AdventureGuild const& guild) const;
     // Buys the next rank. Error codes: UNKNOWN_PERK, NOT_AVAILABLE, MAX_RANK, NO_POINTS.
-    bool Buy(GuildAdventure::AdventureGuild& guild, uint32 perkId, std::string& code, std::string& text);
+    // withGold: paid with gold instead of guild points (GuildAdventure.Perks.GoldPerPoint per point; NOT_ENOUGH_GOLD).
+    bool Buy(GuildAdventure::AdventureGuild& guild, uint32 perkId, std::string& code, std::string& text, bool withGold = false);
+    // The copper one guild point costs when a perk is bought with gold (STATE^gpgold); 0 = no gold purchase.
+    uint64 GoldPerPoint() const;
     // Gives every point back and drops every rank and every GM grant (GM, tests).
     void Reset(GuildAdventure::AdventureGuild& guild);
     // GM: points on top of the achievements' (tests, rewards).
@@ -139,6 +144,9 @@ public:
     // --- hooks, any thread (the snapshot) ---
     GuildAdventure::PerkEffects GetEffects(ObjectGuid character) const;
     float GetValue(ObjectGuid character, GuildAdventure::PerkKind kind) const;
+    // A guild character discovered a flight path (world thread, queued by OnPlayerLearnTaxiNode): with the perk Shared
+    // Maps every character of its guild in the world that is of its side learns it too (the others at their login).
+    void OnTaxiNodeLearned(ObjectGuid character, uint32 node);
     bool Has(ObjectGuid character, GuildAdventure::PerkKind kind) const { return GetValue(character, kind) > 0.0f; }
     // Craft (tradeskill) and gathering spells (mining, herb gathering, skinning).
     static bool IsCraftSpell(SpellInfo const* spellInfo);
@@ -162,6 +170,11 @@ private:
     void TickFlights();
     void TickReagentFields();
     std::vector<ObjectGuid> Members(GuildAdventure::AdventureGuild const& guild) const;
+    // Shared Maps: the flight paths the guild's characters know (read from their saved taximasks once per guild after a
+    // start, then grown by every discovery), and the ones a character of the guild learns from it.
+    std::set<uint32>& GuildNodes(GuildAdventure::AdventureGuild const& guild);
+    uint32 ShareFlightPaths(GuildAdventure::AdventureGuild const& guild, Player* player);
+    std::unordered_map<uint32, std::set<uint32>> _guildNodes; // owner -> taxi nodes
 
     std::vector<GuildAdventure::PerkTemplate> _templates;
     std::unordered_map<uint32, std::map<uint32, uint8>> _ranks;   // owner -> perk id -> rank

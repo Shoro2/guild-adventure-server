@@ -159,6 +159,13 @@ end
 local function PlayButtonState(bot)
     if State.control.busy then
         return "Play", false, "A control swap is in progress."
+    elseif bot.ldr then
+        if bot.s == "offline" then
+            return "Play", false, "Your leader is not in the world right now."
+        elseif bot.s == "controlled" or State.control.g == bot.g or not State.control.g then
+            return "You", false, "You play your leader."
+        end
+        return "Return", true, "Play your leader again; the bot you play goes back to the AI."
     elseif bot.s == "controlled" then
         return "Return", true, "Hand " .. (bot.n or "this bot") .. " back to the AI and play your leader again."
     elseif bot.s == "benched" then
@@ -351,6 +358,10 @@ end
 local function BuildItems()
     local sort = SortSettings()
     local items = {}
+    -- The guild leader first (a bot's record since LEADER^ldr): orders, talents, professions, role and fight like a bot.
+    if State.leader.ldr and State.leader.g and Matches(State.leader) then
+        items[#items + 1] = { kind = "bot", bot = State.leader }
+    end
     for _, bot in ipairs(State.SortedBots(sort.key, sort.desc, Matches)) do
         items[#items + 1] = { kind = "bot", bot = bot }
     end

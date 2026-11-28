@@ -21,6 +21,11 @@
 #include "ObjectMgr.h"
 #include "OrderService.h"
 #include "Player.h"
+#include "PlayerTaxi.h"
+#include "ProgressionService.h"
+#include "GuildBank.h"
+#include "GuildBudget.h"
+#include "WorldPacket.h"
 #include "ScriptMgr.h"
 #include "SpellInfo.h"
 #include "StorageService.h"
@@ -63,6 +68,7 @@ namespace
         { PerkKind::GatherSpeed,      "gather_speed" },
         { PerkKind::WaterBreathing,   "water_breathing" },
         { PerkKind::NoFallDamage,     "no_fall_damage" },
+        { PerkKind::SharedFlightPaths, "shared_flight_paths" },
     };
 
     PerkKind KindOf(std::string const& key)
@@ -255,7 +261,12 @@ uint32 PerkService::GetAvailable(AdventureGuild const& guild) const
     return earned > spent ? earned - spent : 0;
 }
 
-bool PerkService::Buy(AdventureGuild& guild, uint32 perkId, std::string& code, std::string& text)
+uint64 PerkService::GoldPerPoint() const
+{
+    return uint64(GetSettings().perksGoldPerPoint) * GOLD;
+}
+
+bool PerkService::Buy(AdventureGuild& guild, uint32 perkId, std::string& code, std::string& text, bool withGold)
 {
     PerkTemplate const* perk = FindTemplate(perkId);
     if (!perk)
@@ -281,7 +292,50 @@ bool PerkService::Buy(AdventureGuild& guild, uint32 perkId, std::string& code, s
     }
     uint32 const cost = perk->costs[rank];
     uint32 const available = GetAvailable(guild);
-    if (available < cost)
+    // Bought with gold (the owner, 2026-11-28: [quote left out]): the guild points are not touched, the gold is paid as an unlock is.
+    std::string paid;
+    if (withGold)
+    {
+        uint64 const price = uint64(cost) * GoldPerPoint();
+        if (!price)
+        {
+            code = "NOT_AVAILABLE";
+            text = "Perks cannot be bought with gold on this server.";
+            return false;
+        }
+        UnlockPayFrom const from = sProgressionService.GetPayFrom(guild);
+        uint64 const bank = from != UnlockPayFrom::Leader ? GuildBank::Money(guild.ownerAccount) : 0;
+        Player* leader = from != UnlockPayFrom::Bank ? ObjectAccessor::FindPlayer(guild.leader) : nullptr;
+        uint64 const purse = leader ? leader->GetMoney() : 0;
+        uint64 const fromBank = std::min(bank, price);
+        uint64 const fromLeader = price - fromBank;
+        auto money = [](uint64 copper) { return GuildBudget::MoneyText(uint32(std::min<uint64>(copper, UINT32_MAX))); };
+        if (fromLeader > purse || fromLeader > uint64(INT32_MAX))
+        {
+            code = "NOT_ENOUGH_GOLD";
+            text = Acore::StringFormat("{} rank {} costs {}; {}.", perk->name, rank + 1, money(price), from == UnlockPayFrom::Leader
+                ? (leader ? "the guild leader has " + money(purse) : std::string("the guild leader is not in the world"))
+                : "the guild bank has " + money(bank) + (from == UnlockPayFrom::Bank ? std::string() : leader ? " and the guild leader " + money(purse) : std::string()));
+            return false;
+        }
+        if (fromBank && !GuildBank::Withdraw(guild.ownerAccount, fromBank, Acore::StringFormat("bought the guild perk {} rank {}", perk->name, rank + 1)))
+        {
+            code = "NOT_ENOUGH_GOLD";
+            text = "The guild bank could not pay (the adventure guild has no WoW guild bank).";
+            return false;
+        }
+        if (fromLeader)
+        {
+            leader->ModifyMoney(-int32(fromLeader));
+            CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+            leader->SaveGoldToDB(trans);
+            CharacterDatabase.CommitTransaction(trans);
+        }
+        paid = fromBank ? money(fromBank) + " from the guild bank" : std::string();
+        if (fromLeader)
+            paid += (paid.empty() ? "" : " and ") + money(fromLeader) + " from " + leader->GetName() + "'s purse";
+    }
+    else if (available < cost)
     {
         code = "NO_POINTS";
         text = Acore::StringFormat("{} rank {} costs {} guild points; the guild has {}.", perk->name, rank + 1, cost, available);
@@ -290,17 +344,23 @@ bool PerkService::Buy(AdventureGuild& guild, uint32 perkId, std::string& code, s
 
     uint8 const newRank = rank + 1;
     _ranks[owner][perk->id] = newRank;
-    _spent[owner] += cost;
-    uint32 spentOnPerk = 0;
-    for (uint8 i = 0; i < newRank; ++i)
-        spentOnPerk += perk->costs[i];
+    // (A rank bought with gold spends no guild points: ga_guild_perk.spent counts the points the perk took.)
+    uint32 const pointsNow = withGold ? 0 : cost;
+    _spent[owner] += pointsNow;
+    uint32 spentOnPerk = pointsNow;
+    if (QueryResult result = CharacterDatabase.Query("SELECT spent FROM ga_guild_perk WHERE owner_account = {} AND perk_id = {}", owner, perk->id))
+        spentOnPerk += result->Fetch()[0].Get<uint32>();
     CharacterDatabase.Execute("REPLACE INTO ga_guild_perk (owner_account, perk_id, perk_rank, spent, updated_at) VALUES ({}, {}, {}, {}, {})",
         owner, perk->id, uint32(newRank), spentOnPerk, Now());
 
     RecordEvent(guild, "PERK", ObjectGuid::Empty, perk->MaxRank() > 1 ?
         Acore::StringFormat("The guild bought {} rank {}: {}.", perk->name, newRank, perk->Describe(newRank)) :
         Acore::StringFormat("The guild bought {}: {}.", perk->name, perk->Describe(newRank)), newRank, 0, 0);
-    LOG_INFO("module", "mod-guild-adventure: account {} bought guild perk {} rank {} for {} points", owner, perk->key, newRank, cost);
+    if (withGold)
+        LOG_INFO("module.ga.activity", "activity: adventure guild of account {} bought the guild perk {} rank {} with gold ({})", owner,
+            perk->name, newRank, paid);
+    else
+        LOG_INFO("module", "mod-guild-adventure: account {} bought guild perk {} rank {} for {} points", owner, perk->key, newRank, cost);
 
     _dirty = true;
     RebuildSnapshot();
@@ -426,6 +486,80 @@ void PerkService::Apply(Player* player, PerkEffects const& effects)
         if (learned && GetSettings().debug)
             LOG_INFO("module", "mod-guild-adventure: {} knows {} more flight paths (guild perk)", player->GetName(), learned);
     }
+    if (effects.Has(PerkKind::SharedFlightPaths))
+        if (AdventureGuild* guild = sAchievementService.FindGuildOf(player->GetGUID()))
+            if (uint32 const learned = ShareFlightPaths(*guild, player))
+                LOG_INFO("module.ga.activity", "activity: {} learned {} flight paths its guild knows (guild perk Shared Maps)",
+                    player->GetName(), learned);
+}
+
+// Guild perk Shared Maps (the owner, 2026-11-28: [quote left out]): a flight path one character of the guild knows, every
+// character of the guild of that side knows. Only with the perk (the callers check it).
+std::set<uint32>& PerkService::GuildNodes(AdventureGuild const& guild)
+{
+    auto [itr, inserted] = _guildNodes.try_emplace(guild.ownerAccount);
+    if (inserted)
+    {
+        std::string list;
+        for (ObjectGuid member : Members(guild))
+            list += (list.empty() ? "" : ",") + std::to_string(member.GetCounter());
+        if (!list.empty())
+            if (QueryResult result = CharacterDatabase.Query("SELECT taximask FROM characters WHERE guid IN ({})", list))
+                do
+                {
+                    PlayerTaxi taxi;
+                    taxi.LoadTaxiMask(result->Fetch()[0].Get<std::string>());
+                    for (uint32 node = 1; node < sTaxiNodesStore.GetNumRows(); ++node)
+                        if (taxi.IsTaximaskNodeKnown(node))
+                            itr->second.insert(node);
+                } while (result->NextRow());
+    }
+    return itr->second;
+}
+
+uint32 PerkService::ShareFlightPaths(AdventureGuild const& guild, Player* player)
+{
+    std::set<uint32>& nodes = GuildNodes(guild);
+    for (uint32 node = 1; node < sTaxiNodesStore.GetNumRows(); ++node)
+        if (player->m_taxi.IsTaximaskNodeKnown(node))
+            nodes.insert(node);
+    TeamId const team = player->GetTeamId();
+    uint32 learned = 0;
+    for (uint32 node : nodes)
+        if (sObjectMgr->GetTaxiMountDisplayId(node, team) && !player->m_taxi.IsTaximaskNodeKnown(node) &&
+            player->m_taxi.SetTaximaskNode(node))
+            ++learned;
+    return learned;
+}
+
+void PerkService::OnTaxiNodeLearned(ObjectGuid character, uint32 node)
+{
+    if (!Has(character, PerkKind::SharedFlightPaths))
+        return;
+    AdventureGuild* guild = sAchievementService.FindGuildOf(character);
+    if (!guild)
+        return;
+    GuildNodes(*guild).insert(node);
+    uint32 told = 0;
+    for (ObjectGuid member : Members(*guild))
+    {
+        if (member == character)
+            continue;
+        Player* other = ObjectAccessor::FindPlayer(member);
+        if (!other || !other->IsInWorld() || !sObjectMgr->GetTaxiMountDisplayId(node, other->GetTeamId()) ||
+            other->m_taxi.IsTaximaskNodeKnown(node) || !other->m_taxi.SetTaximaskNode(node))
+            continue;
+        ++told;
+        if (WorldSession* session = other->GetSession())
+        {
+            WorldPacket msg(SMSG_NEW_TAXI_PATH, 0);
+            session->SendPacket(&msg);
+        }
+    }
+    Player const* finder = ObjectAccessor::FindPlayer(character);
+    TaxiNodesEntry const* entry = sTaxiNodesStore.LookupEntry(node);
+    LOG_INFO("module.ga.activity", "activity: {} discovered the flight path {}: {} more characters of its guild in the world know it "
+        "now (guild perk Shared Maps)", finder ? finder->GetName() : character.ToString(), entry ? entry->name[0] : "?", told);
 }
 
 void PerkService::ApplyToGuild(AdventureGuild const& guild)

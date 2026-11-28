@@ -3393,8 +3393,11 @@ static bool QuestWants(Player* player, Creature const* target, BotRuntime const*
             continue;
         for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
         {
+            // (Not an objective that is done: a level-5 mage with its ten Young Night Web Spiders of "Night Web's Hollow"
+            // killed went on pulling young spiders, which still counted as wanted, and made no progress on the Night Web
+            // Spiders of the next objective for four minutes, twice; a player's log, 2026-11-28.)
             int32 const wanted = quest->RequiredNpcOrGo[i];
-            if (wanted > 0 && (uint32(wanted) == entry ||
+            if (wanted > 0 && player->GetQuestSlotCounter(slot, i) < quest->RequiredNpcOrGoCount[i] && (uint32(wanted) == entry ||
                 (info && (uint32(wanted) == info->KillCredit[0] || uint32(wanted) == info->KillCredit[1]))))
                 return true;
         }

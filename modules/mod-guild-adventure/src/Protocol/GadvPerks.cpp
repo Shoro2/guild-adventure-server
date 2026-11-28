@@ -50,7 +50,7 @@ void GadvProtocol::OnPerkBuy(uint32 accountId, AdventureGuild& guild, Message co
     }
     std::string code;
     std::string text;
-    if (!sPerkService.Buy(guild, uint32(*id), code, text))
+    if (!sPerkService.Buy(guild, uint32(*id), code, text, message.GetBool("gold").value_or(false)))
     {
         Error(accountId, r, code, text);
         return;

@@ -74,7 +74,8 @@ Tiers beyond level 60 are shown greyed; they wait for content the game does not 
 ## Guild perks
 
 Guild points are the points of your guild's achievements and tiers. Spend them on the **Perks** tab; a perk works for
-you and every bot at once and for good. Perks with ranks cost 50, 100, 200, 350 and 500 points per rank.
+you and every bot at once and for good. Perks with ranks cost 50, 100, 200, 350 and 500 points per rank. The gold
+button beside **Buy** buys a rank with gold instead (100 gold per point by default, from the guild bank).
 
 | Perk | Effect per rank (5 ranks) |
 |---|---|

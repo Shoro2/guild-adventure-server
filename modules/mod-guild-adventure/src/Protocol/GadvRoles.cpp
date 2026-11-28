@@ -28,7 +28,7 @@ void GadvProtocol::OnRoleSet(uint32 accountId, AdventureGuild& guild, Message co
     std::optional<int64> const t = message.GetInt("t");
     std::string const token = message.GetString("role");
     ObjectGuid const guid = g ? ObjectGuid::Create<HighGuid::Player>(uint32(*g)) : ObjectGuid::Empty;
-    GuildBot const* bot = g ? guild.FindBot(guid) : nullptr;
+    GuildBot const* bot = g ? guild.FindMember(guid) : nullptr;
     if (!bot)
     {
         Error(accountId, r, "NOT_OWNER", "That character is not one of your guild bots.");
@@ -60,7 +60,7 @@ void GadvProtocol::SendRoleGear(uint32 accountId, AdventureGuild& guild, Message
 {
     std::optional<int64> const g = message.GetInt("g");
     ObjectGuid const guid = g ? ObjectGuid::Create<HighGuid::Player>(uint32(*g)) : ObjectGuid::Empty;
-    if (!g || !guild.FindBot(guid))
+    if (!g || !guild.FindMember(guid))
         return;
     std::vector<Message> records;
     if (std::vector<RolePiece> const* store = sRoleService.GetStore(guid))

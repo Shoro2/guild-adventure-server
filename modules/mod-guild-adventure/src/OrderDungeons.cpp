@@ -634,17 +634,23 @@ namespace
         return result;
     }
 
-    // Creatures whose fire pulses round them all through a fight (a hand list): Molten Core's Flame Imps cast Fire Nova
-    // (20602, 10 yd, every 4 to 7 s), and in a pack of twenty each character at the tank took a nova of every imp
-    // round it: the owner's raid of 40 was wiped out in 15 s, 2026-11-27 ([quote left out]).
+    // Creatures only a tank stands beside in a fight (a hand list): Molten Core's Flame Imps cast Fire Nova (20602, 10 yd,
+    // every 4 to 7 s), and in a pack of twenty each character at the tank took a nova of every imp round it: the owner's raid
+    // of 40 was wiped out in 15 s, 2026-11-27 ([quote left out]). Garr's Firesworn burst at their death
+    // (Eruption 19497, 15 yd, about 2000 fire); the raid's area spells took several from above 30 % to dead at once while
+    // the raid stood among them at its tank, and 19 died in one second, 2026-11-27 (the burst rule, which steps out from
+    // one below 30 %, was too late for that).
     struct Pulser
     {
         uint32 entry;
         float yards;
     };
+    Pulser const Pulsers[] = {
+        { 11669, 10.0f },  // Flame Imp (Molten Core): Fire Nova
+        { 12099, 15.0f },  // Firesworn (Garr, Molten Core): Eruption at its death
+    };
     Pulser const* PulserOf(Creature const* creature)
     {
-        static Pulser const Pulsers[] = { { 11669, 10.0f } };  // Flame Imp: Fire Nova
         if (creature)
             for (Pulser const& pulser : Pulsers)
                 if (pulser.entry == creature->GetEntry())
@@ -655,11 +661,14 @@ namespace
     std::vector<Creature*> PulsersNear(WorldObject const* center, float range)
     {
         std::vector<Creature*> result;
-        std::list<Creature*> found;
-        center->GetCreatureListWithEntryInGrid(found, 11669, range);
-        for (Creature* creature : found)
-            if (creature->IsAlive() && creature->IsInCombat() && PulserOf(creature))
-                result.push_back(creature);
+        for (Pulser const& pulser : Pulsers)
+        {
+            std::list<Creature*> found;
+            center->GetCreatureListWithEntryInGrid(found, pulser.entry, range);
+            for (Creature* creature : found)
+                if (creature->IsAlive() && creature->IsInCombat())
+                    result.push_back(creature);
+        }
         return result;
     }
     // Whether (x, y, z) lies within the pulse of one of `pulsers` (2 yd more than its reach).
@@ -3608,8 +3617,89 @@ void OrderService::StepDungeonPulsers(BotRuntime::DungeonRun& run, std::vector<P
         if (!run.burstLogged.count(key))
         {
             run.burstLogged.insert(key);
-            LOG_INFO(ActivityLog, "activity: the group in {} keeps out of the pulse of {} (only its tank stands among them; melee "
+            LOG_INFO(ActivityLog, "activity: the group in {} keeps out of the reach of {} (only its tanks stand among them; melee "
                 "damage dealers hold back while they fight)", dungeon, pulsers.front()->GetName());
+        }
+    }
+}
+
+namespace
+{
+    bool CastFirstOf(Player* caster, Unit* target, std::initializer_list<char const*> names);
+}
+
+// The adds of a raid boss over the raid's tanks (Garr's eight Firesworn came with him onto the raid: they killed a
+// healer in three seconds, and on the second pull all eight stood on the main tank, which died in five seconds,
+// 2026-11-27). In a boss fight an add on a member who is not a tank, or the first add on the boss's tank, or the third
+// on another tank, is taunted off by the tank with the fewest adds on it that does not hold the boss.
+void OrderService::StepRaidAddTanks(BotRuntime::DungeonRun& run, std::vector<Player*> const& group, std::string const& raid)
+{
+    constexpr uint32 TauntEveryMs = 2 * IN_MILLISECONDS;
+    constexpr float TauntYards = 30.0f;
+    uint32 const now = std::max<uint32>(getMSTime(), 1);
+    if ((run.raidHoldUntil && now < run.raidHoldUntil) || (!run.twinSide.empty() && run.twinPulledAt) || !run.cthunSlot.empty() ||
+        (run.twinBugsSince && !run.twinBugsDone) || run.twinGuards)
+        return;
+    std::vector<Creature*> const fight = CreaturesOfTheFight(group);
+    Creature* boss = nullptr;
+    for (Creature* creature : fight)
+        if (creature->IsDungeonBoss())
+            boss = creature;
+    if (!boss)
+        return;
+    AdventureGuild* guild = group.empty() ? nullptr : sGuildAdventureMgr.FindGuildOfMember(group.front()->GetGUID());
+    if (!guild)
+        return;
+    std::vector<Player*> tanks;
+    for (Player* member : group)
+        if (GuildBot const* memberBot = guild->FindMember(member->GetGUID()); memberBot && member->IsAlive() &&
+            sRoleService.EffectiveRole(*memberBot) == DungeonRole::Tank && sGuildBotHolder.IsAIDriven(member->GetGUID()))
+            tanks.push_back(member);
+    if (tanks.size() < 2)
+        return;
+    auto isTank = [&](Unit const* unit) { return std::find(tanks.begin(), tanks.end(), unit) != tanks.end(); };
+    std::unordered_map<Player*, uint32> adds;
+    for (Creature* creature : fight)
+        if (!creature->IsDungeonBoss())
+            if (Player* victim = creature->GetVictim() ? creature->GetVictim()->ToPlayer() : nullptr; victim && isTank(victim))
+                ++adds[victim];
+    for (Creature* add : fight)
+    {
+        if (add->IsDungeonBoss() || !add->IsAlive())
+            continue;
+        Player* victim = add->GetVictim() ? add->GetVictim()->ToPlayer() : nullptr;
+        if (!victim || std::find(group.begin(), group.end(), victim) == group.end())
+            continue;
+        bool const onTank = isTank(victim);
+        if (onTank && adds[victim] <= (boss->GetVictim() == victim ? 0u : 2u))
+            continue;
+        Player* pick = nullptr;
+        for (Player* tank : tanks)
+        {
+            if (tank == victim || boss->GetVictim() == tank || adds[tank] >= 2 || !tank->IsWithinDistInMap(add, TauntYards) ||
+                tank->HasUnitState(UNIT_STATE_CONTROLLED) || tank->IsBeingTeleported())
+                continue;
+            if (uint32 const at = run.addTauntAt[tank->GetGUID()]; at && now < at)
+                continue;
+            if (!pick || adds[tank] < adds[pick] || (adds[tank] == adds[pick] && tank->GetDistance(add) < pick->GetDistance(add)))
+                pick = tank;
+        }
+        if (!pick)
+            continue;
+        run.addTauntAt[pick->GetGUID()] = now + TauntEveryMs;
+        bool const taunted = CastFirstOf(pick, add, { "taunt", "hand of reckoning", "growl", "dark command" });
+        if (!taunted && onTank)
+            continue;  // (another tank holds it: without a taunt it stays there)
+        BotDriver::Attack(pick, add, false);
+        ++adds[pick];
+        if (onTank && adds[victim])
+            --adds[victim];
+        uint32 const key = 0x80000000u | add->GetEntry();
+        if (!run.burstLogged.count(key))
+        {
+            run.burstLogged.insert(key);
+            LOG_INFO(ActivityLog, "activity: the raid in {} spreads the adds of {} over its tanks: {} {} {} (level {}) off {}", raid,
+                boss->GetName(), pick->GetName(), taunted ? "taunts" : "takes", add->GetName(), uint32(add->GetLevel()), victim->GetName());
         }
     }
 }
@@ -7087,6 +7177,7 @@ void OrderService::StepDungeonFight(AdventureGuild& guild, GuildBot& bot, Player
                             "against its poison", plan->name);
                     }
             StepRaidBursts(run, group, plan->name);
+            StepRaidAddTanks(run, group, plan->name);
             StepRaidTwins(run, group, plan->name);
             StepRaidViscidus(run, group, plan->name);
             StepRaidCthun(run, group, plan->name);
@@ -8864,6 +8955,8 @@ bool OrderService::StepDungeonGuest(GuildBot& bot, Player* player, BotRuntime& r
     {
         run.guestWaitSince = now;
         BotDriver::Rest(player);
+        LOG_INFO(ActivityLog, "activity: {}'s group waits in {} for {}, which its owner plays by hand: it {}", bot.name, plan.name,
+            guest->GetName(), reason);
     }
     else if (getMSTimeDiff(run.guestWaitSince, now) > GetSettings().squadsMaxWaitSeconds * IN_MILLISECONDS)
     {
@@ -9270,6 +9363,12 @@ bool OrderService::StepDungeonDead(AdventureGuild& guild, GuildBot& bot, Player*
     return true;
 }
 
+namespace
+{
+    // When the run first saw each character its owner plays by hand in a group (world thread only).
+    std::unordered_map<ObjectGuid, uint32> guestSeenAt;
+}
+
 void OrderService::RunDungeon(AdventureGuild& guild, GuildBot& bot, Player* player, BotRuntime& rt)
 {
     uint32 const now = std::max<uint32>(getMSTime(), 1);
@@ -9293,6 +9392,10 @@ void OrderService::RunDungeon(AdventureGuild& guild, GuildBot& bot, Player* play
     // No character played by hand (any more): no wait for it. (The owner's client watched the leader two seconds after
     // it came back from a restart in the Wailing Caverns; the wait begun in those seconds was never ended, the "no nearer
     // to the boss" clock stood still, and the group stood eight minutes below Verdan's ledge without its hop.)
+    if (guest)
+        guestSeenAt.try_emplace(guest->GetGUID(), now);
+    for (auto itr = guestSeenAt.begin(); itr != guestSeenAt.end();)
+        itr = sSquadService.GetLeader(itr->first) == bot.guid && (!guest || guest->GetGUID() != itr->first) ? guestSeenAt.erase(itr) : std::next(itr);
     if (!guest)
     {
         run.guestWaitSince = 0;
@@ -9320,6 +9423,13 @@ void OrderService::RunDungeon(AdventureGuild& guild, GuildBot& bot, Player* play
     // order given to a squad whose leader does not tank gets the same): the squad becomes a group of the run window
     // that its first tank leads, and is what it was before when the order is over.
     if (run.id != plan->id && !run.repeat && PutTankInFront(guild, bot, player, group))
+        return;
+
+    // A character its owner has just taken over (a swap through the character screen) is on its loading screen for a
+    // few seconds: the run does not begin before it is in, or the start's teleports leave it behind. (The owner took his
+    // death knight over 5 s before his Upper Blackrock Spire group's run began anew after his login, 2026-11-28: the
+    // group was taken to the entrance without it, and it stood alone 92 yd behind.)
+    if (run.id != plan->id && guest && (guest->IsBeingTeleported() || getMSTimeDiff(guestSeenAt[guest->GetGUID()], now) < 10 * IN_MILLISECONDS))
         return;
 
     if (run.id != plan->id)
@@ -9385,6 +9495,8 @@ void OrderService::RunDungeon(AdventureGuild& guild, GuildBot& bot, Player* play
             {
                 LOG_INFO(ActivityLog, "activity: {}'s group stands inside {} as its run begins ({} hostile creatures within 40 yd of {}): it "
                     "starts at the entrance", bot.name, plan->name, among, where);
+                // (The character its owner plays by hand goes with it: 'group' holds only what the AI plays.)
+                TakeGuestAlong(bot, player, plan->inX, plan->inY, plan->inZ, "its run begins at the entrance");
                 for (Player* member : group)
                 {
                     if (!member->IsAlive() || member->GetMapId() != plan->mapId || member->IsBeingTeleported())

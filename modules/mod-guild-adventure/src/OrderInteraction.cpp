@@ -495,6 +495,31 @@ bool OrderService::StepInteraction(AdventureGuild& guild, GuildBot& bot, Player*
                 living = creature;
             }
         }
+        // A target with an aura condition (a Lazy Peon asleep: the Foreman's Blackjack wakes only those) is looked for
+        // farther than the spot's sight: few of them sleep at once, and the one asleep is seldom at the spawn the task
+        // went to. A warrior walked to ten peon spawns in 13 minutes for "Lazy Peons", 45 s at each ending "no target in
+        // sight", while peons slept elsewhere in the Valley of Trials (a player's log, 2026-11-28).
+        if (!target && !plan.targetDead && (!plan.targetAuras.empty() || !plan.targetNoAuras.empty()))
+        {
+            constexpr float AuraLookYards = 160.0f;
+            std::list<Creature*> farOnes;
+            player->GetCreatureListWithEntryInGrid(farOnes, plan.targetEntries, AuraLookYards);
+            float bestFar = AuraLookYards + 1.0f;
+            for (Creature* creature : farOnes)
+            {
+                float const distance = player->GetDistance(creature);
+                if (!creature->IsInWorld() || !creature->IsAlive() || !unused(creature->GetGUID()) || distance >= bestFar ||
+                    std::fabs(creature->GetPositionZ() - player->GetPositionZ()) > 25.0f ||
+                    !std::all_of(plan.targetAuras.begin(), plan.targetAuras.end(), [&](uint32 aura) { return creature->HasAura(aura); }) ||
+                    std::any_of(plan.targetNoAuras.begin(), plan.targetNoAuras.end(), [&](uint32 aura) { return creature->HasAura(aura); }))
+                    continue;
+                bestFar = distance;
+                target = creature;
+            }
+            if (target && task.approachTarget != target->GetGUID())
+                LOG_INFO(ActivityLog, "activity: {} quest {}: goes to {} {:.0f} yd away, the nearest one the item's spell takes",
+                    bot.name, task.questId, target->GetName(), bestFar);
+        }
         // The item wants a corpse and none is here: kill one first (the combat AI takes over once the fight starts). The
         // bot walks up to it (Attack() alone does not: Retadin "attacked" a Firemane Ash Tail once a second for four
         // minutes without a fight, "The Essence of Enmity"); one no fight comes of within 30 s is passed.

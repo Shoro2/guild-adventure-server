@@ -112,6 +112,9 @@ Write-Conf (Join-Path $GA.Configs 'worldserver.conf.dist') (Join-Path $GA.Config
     # to its target held a bot group in a fight for 14 minutes. With 1 a non-boss creature in a dungeon or raid that
     # cannot reach its target teleports to it (retail-like) instead of evading or regenerating in place.
     'Creature.Instance.TeleportToUnreachableTarget' = '1'
+    # AFK logout (2026-11-28): players watching their bots (watch mode, a dungeon run) for longer than the idle time
+    # were logged out. 2 = no AFK logout in any zone.
+    'PreventAFKLogout'         = '2'
     # Logs (2026-11-12): a restart no longer wipes what happened before it. Server.log and Errors.log are
     # appended to, each line with its time; Playerbots.log (thousands of AI lines a minute) starts anew with
     # every start, timestamped too. A log that passes its size cap (bytes, last field: 50 MB, 10 MB, 100 MB,

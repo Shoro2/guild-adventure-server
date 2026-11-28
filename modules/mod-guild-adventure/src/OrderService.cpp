@@ -4369,8 +4369,10 @@ void OrderService::UpdateBot(AdventureGuild& guild, GuildBot& bot, Player* playe
     }
 
     // Talent points along the bot's template (SpecService): after a login and a level-up, out of combat. The leader
-    // spends his own. Before the class abilities: a hunter's exotic pet asks for the talent.
-    if (uint32 const now = getMSTime(); (now >= rt.nextSpec || sSpecService.HasPendingReset(bot.guid)) && bot.guid != guild.leader &&
+    // spends his own until the owner chose a template for him. Before the class abilities: a hunter's exotic pet asks
+    // for the talent.
+    if (uint32 const now = getMSTime(); (now >= rt.nextSpec || sSpecService.HasPendingReset(bot.guid)) &&
+        (bot.guid != guild.leader || sSpecService.HasAssignment(bot.guid)) &&
         player->IsAlive() && !player->IsInCombat())
     {
         rt.nextSpec = now + ClassAbilitiesCheckMs;
@@ -11992,7 +11994,11 @@ bool OrderService::StepNpcTask(Player* player, BotRuntime& rt, bool& done)
         return true;
 
     float const distance = Dist2d(player, task.spot);
-    if (distance > NearDistance && !task.nearSince)
+    // (On the navmesh's way to another level (SetAsideOtherLevel) the walk goes on however near the NPC is on the map: a
+    // warrior in Sarkoth's cave 25 yd above the vendor Huklah, 29 yd away, "walks that way" (456 yd) and stood 30 s,
+    // NewRpg's straight visit refused, until the vendor was set aside; a player's log, 2026-11-28.)
+    bool const openWalk = task.openWay && player->GetExactDist(task.spot.x, task.spot.y, task.spot.z) > 8.0f;
+    if ((distance > NearDistance || openWalk) && !task.nearSince)
     {
         if (UpdateStuck(player, rt, task.spot.x, task.spot.y))
         {
@@ -13632,6 +13638,37 @@ bool OrderService::StepTask(AdventureGuild& guild, GuildBot& bot, Player* player
                     {
                         LOG_INFO(ActivityLog, "activity: {} takes a flight towards {} after all: its way on foot is refused", bot.name,
                             task.targetName);
+                        task.route = RoadRoute();
+                        return true;
+                    }
+                }
+                // A travel into a zone whose way passes the zone before the group: it goes as far into the zone as the way is
+                // free and works the zone from there. The zone was written off and the bot crossed the sea: a level-14 human
+                // in Stormwind was refused Westfall for a camp of seven level-15 creatures at Demont's Place on the way to the
+                // lighthouse, past Saldean's Farm and Sentinel Hill, and Loch Modan for a camp on its way, and sailed for
+                // Darkshore (2026-11-28, the owner's test).
+                if (group && task.kind == TaskKind::Travel && !task.errand && !task.journey && !task.partnerMeet && !task.zoneCut &&
+                    rt.targetZone && task.targetName == ZoneName(rt.targetZone) && task.route.found && task.route.crowdDistance > 0.0f)
+                {
+                    constexpr float GroupMarginYards = 100.0f;
+                    RoutePoint const* last = nullptr;
+                    for (RoutePoint const& point : task.route.points)
+                    {
+                        if (Dist2d(player, point.x, point.y) >= task.route.crowdDistance - GroupMarginYards)
+                            break;
+                        if (player->GetMap()->GetZoneId(PHASEMASK_NORMAL, point.x, point.y, point.z) == rt.targetZone)
+                            last = &point;
+                    }
+                    if (last && Dist2d(player, last->x, last->y) > NearDistance)
+                    {
+                        LOG_INFO(ActivityLog, "activity: {} travels only as far as ({:.0f}, {:.0f}) in {}: the way on leads through a "
+                            "group of {} level-{} creatures", bot.name, last->x, last->y, task.targetName, uint32(task.route.crowd),
+                            uint32(task.route.crowdLevel));
+                        task.zoneCut = true;
+                        task.spot.spawnId = 0;
+                        task.spot.x = last->x;
+                        task.spot.y = last->y;
+                        task.spot.z = last->z;
                         task.route = RoadRoute();
                         return true;
                     }

@@ -848,7 +848,7 @@ void GadvProtocol::OnProfSet(uint32 accountId, AdventureGuild& guild, Message co
     std::optional<int64> const r = RequestId(message);
     std::optional<int64> const g = message.GetInt("g");
     ObjectGuid const guid = g ? ObjectGuid::Create<HighGuid::Player>(uint32(*g)) : ObjectGuid::Empty;
-    GuildBot* bot = g ? guild.FindBot(guid) : nullptr;
+    GuildBot* bot = g ? guild.FindMember(guid) : nullptr;
     if (!bot)
     {
         Error(accountId, r, g ? "NOT_OWNER" : "BAD_REQUEST", "That character is not one of your guild bots.");
@@ -1525,7 +1525,8 @@ Message GadvProtocol::BuildState(AdventureGuild const& guild) const
         .Set("sti", sStorageService.GetTotals(guild.ownerAccount).second)
         .Set("gp", sPerkService.GetAvailable(guild))
         .Set("gps", sPerkService.GetSpent(guild.ownerAccount))
-        .Set("gpg", sPerkService.GetGranted(guild.ownerAccount));
+        .Set("gpg", sPerkService.GetGranted(guild.ownerAccount))
+        .Set("gpgold", sPerkService.GoldPerPoint());
 }
 
 Message GadvProtocol::BuildControlState(AdventureGuild const& guild, Player* current, bool busy) const
@@ -1716,7 +1717,13 @@ GadvProtocol::FieldMap GadvProtocol::BuildLeaderFields(AdventureGuild const& gui
             .Set("why", s == "active" ? "Holding position (no order)" : s == "controlled" ? "Played by you" : "Offline");
     }
     record.Set("xph", sOrderService.GetXpPerHour(guild.leader)).Set("gph", sOrderService.GetMoneyPerHour(guild.leader));
-    return record.Fields();
+    // Everything a bot's record carries (professions, talents, dungeon role, fight profiles, gear ...): the addon shows
+    // the leader in the roster with a bot's detail (the owner, 2026-11-28: [quote left out]). The leader's own fields above win.
+    record.Set("ldr", true);
+    FieldMap merged = BuildBotFields(guild, plan);
+    for (auto const& [key, value] : record.Fields())
+        merged[key] = value;
+    return merged;
 }
 
 Message GadvProtocol::BuildEvent(GuildEvent const& event) const

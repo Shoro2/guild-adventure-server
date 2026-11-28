@@ -126,6 +126,7 @@ namespace GuildAdventure
         bool anyDock = false;          // Voyage: the bot was found on board without a voyage; it goes ashore at the next dock
         bool shoreLeave = false;       // Voyage: ... and that is what this voyage is (it stays so when the stop is known)
         bool flightAfterRefusal = false; // Travel: a flight was asked for after its way on foot was refused
+        bool zoneCut = false;          // Travel to a zone: it goes only as far into the zone as the way is free (a group on it)
         bool flew = false;          // a flight was booked for this task (a journey that never flew does not hold the next one back)
         bool otherLevelLooked = false; // Interact: the way to a spot on another level near by was asked for (own steps)
         uint32 buyStepInSince = 0;     // Vendor: since when it steps within the core's interaction distance to buy
@@ -1350,6 +1351,8 @@ namespace GuildAdventure
             std::unordered_map<ObjectGuid, uint32> burstStepAt;
             std::unordered_set<uint32> waySent; // the area triggers of StepWayTriggers reported in this run
             std::set<uint32> burstLogged;
+            // The adds of a raid boss over its tanks (StepRaidAddTanks): when each tank may taunt again.
+            std::unordered_map<ObjectGuid, uint32> addTauntAt;
             // The Twin Emperors on two sides (StepTwinsPull, StepRaidTwins): each member's side (0: Vek'nilash's throne,
             // 1: Vek'lor's) and kind (0 tank, 1 healer, 2 physical damage, 3 magic damage, 4 warlock that tanks
             // Vek'lor), the place of each side, when the raid began to take its places and when it pulled; the side
@@ -2287,6 +2290,7 @@ private:
     void StepDungeonFlames(GuildAdventure::BotRuntime::DungeonRun& run, std::vector<Player*> const& group, std::string const& dungeon);
     void StepWayTriggers(GuildAdventure::BotRuntime::DungeonRun& run, std::vector<Player*> const& group, std::string const& dungeon);
     void StepDungeonPulsers(GuildAdventure::BotRuntime::DungeonRun& run, std::vector<Player*> const& group, std::string const& dungeon);
+    void StepRaidAddTanks(GuildAdventure::BotRuntime::DungeonRun& run, std::vector<Player*> const& group, std::string const& raid);
     // An assist tank taunts a boss whose stacks of a wound weaken its tank too much (Kurinnaxx's Mortal Wound).
     void StepRaidTankSwap(GuildAdventure::BotRuntime::DungeonRun& run, std::vector<Player*> const& group, std::string const& raid);
     // Ossirian: his tank takes him to the next crystal before his Strength comes back.

@@ -47,7 +47,8 @@ namespace
     {
         Login,
         Kill,
-        Loot
+        Loot,
+        Taxi
     };
 
     struct PerkHookEvent
@@ -80,6 +81,7 @@ namespace
                 case PerkHookType::Login: sPerkService.OnCharacterInWorld(event.guid); break;
                 case PerkHookType::Kill:  sPerkService.OnKill(event.guid); break;
                 case PerkHookType::Loot:  sPerkService.OnLooted(event.guid, event.value); break;
+                case PerkHookType::Taxi:  sPerkService.OnTaxiNodeLearned(event.guid, event.value); break;
             }
         }
     }
@@ -103,6 +105,7 @@ public:
         PLAYERHOOK_ON_LOOT_ITEM,
         PLAYERHOOK_ON_CREATURE_KILL,
         PLAYERHOOK_ON_LOGIN,
+        PLAYERHOOK_ON_LEARN_TAXI_NODE,
 #ifdef GUILDADVENTURE_CP8_PERK_HOOKS
         PLAYERHOOK_ON_UPDATE_SPEED,
         PLAYERHOOK_ON_SPELL_CAST_TIME,
@@ -139,6 +142,13 @@ public:
     {
         if (player && IsModuleEnabled())
             QueuePerkEvent(PerkHookType::Login, player->GetGUID());
+    }
+
+    // Shared Maps: the perk is checked first; the guild's other characters learn the node on the world thread.
+    void OnPlayerLearnTaxiNode(Player const* player, uint32 nodeId) override
+    {
+        if (player && IsModuleEnabled() && sPerkService.Has(player->GetGUID(), PerkKind::SharedFlightPaths))
+            QueuePerkEvent(PerkHookType::Taxi, player->GetGUID(), nodeId);
     }
 
 #ifdef GUILDADVENTURE_CP8_PERK_HOOKS

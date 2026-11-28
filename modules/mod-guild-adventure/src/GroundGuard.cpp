@@ -50,6 +50,17 @@ namespace
     // Light's Hope whose top the navmesh does not cover; for a character the core turns every walk to it into a straight
     // line, which from the hill above or the rock's foot runs on the ground and so passed the other rules: bots stood on
     // the rock and were rescued from it again and again, rounds 151 to 153.)
+    // Whether a straight line runs through a wall: the map's static models (a building's walls are WMOs) block the line
+    // between the two places at chest height. The checks below sample the ground under a line and see a floor on both
+    // sides of a wall; a bot of a player's guild walked through a wall of Stormwind's Trade District, where the navmesh
+    // has a whole way round (2026-11-28). (Doodads, trees and planters, are left out: they do not stop a walk.)
+    bool ThroughWall(Player* player, float x, float y, float z)
+    {
+        constexpr float ChestYards = 1.5f;
+        return !player->GetMap()->isInLineOfSight(player->GetPositionX(), player->GetPositionY(), player->GetPositionZ() + ChestYards,
+            x, y, z + ChestYards, player->GetPhaseMask(), LINEOFSIGHT_CHECK_VMAP, VMAP::ModelIgnoreFlags::M2);
+    }
+
     bool EndsOffTheNavmesh(Player* player, float x, float y, float z)
     {
         if (player->GetMap()->IsInWater(player->GetPhaseMask(), x, y, z, player->GetCollisionHeight()))
@@ -209,7 +220,9 @@ bool GroundGuard::MayMove(Player* player, PathGenerator const& path, bool usesPa
     bool const intoWater = swimsAcross || (!swimming && !usesPath && report.valid && player->GetMap()->IsDungeon() &&
         report.throughSolid <= 1.0f && fall >= 2.0f && (fall <= GroundDropYards || (fall <= WaterDropYards &&
         player->GetMap()->IsInWater(player->GetPhaseMask(), x, y, z + 0.5f, player->GetCollisionHeight()))));
-    bool const leaves = underFloor > 0.0f || (report.valid && !intoWater &&
+    bool const throughWall = !swimming && report.valid && !usesPath && !intoWater && distance >= MinDistance &&
+        ThroughWall(player, x, y, z);
+    bool const leaves = underFloor > 0.0f || throughWall || (report.valid && !intoWater &&
         (swimming ? report.throughSolid > SwimmerSolid : (report.LeavesTheGround() || climbsAir || offMesh)));
     // A drop the bot could not climb back from: the walk jumps down a ledge, and from below no way leads back to where
     // it stands. (The guild leader dropped into the Searing Gorge's Cauldron, whose floor only the scaffold lifts join
@@ -316,6 +329,10 @@ bool GroundGuard::MayMove(Player* player, PathGenerator const& path, bool usesPa
             "onto ground from which no way leads back down{}", player->GetName(), player->GetPositionX(), player->GetPositionY(),
             player->GetPositionZ(), x, y, z, chase ? " (its chase in a fight)" : "", report.endZ - player->GetPositionZ(),
             gaveUp ? "; it leaves the quest giver there alone" : "");
+    else if ((log || gaveUp) && throughWall && !report.LeavesTheGround() && !climbsAir && !offMesh)
+        LOG_INFO(ActivityLog, "activity: {} does not walk from ({:.0f}, {:.0f}, {:.0f}) to ({:.0f}, {:.0f}, {:.0f}){}: a straight line of "
+            "{:.0f} yd through a wall{}", player->GetName(), player->GetPositionX(), player->GetPositionY(), player->GetPositionZ(), x, y, z,
+            chase ? " (its chase in a fight)" : "", player->GetExactDist(x, y, z), gaveUp ? "; it leaves the quest giver there alone" : "");
     else if ((log || gaveUp) && offMesh && !report.LeavesTheGround() && !climbsAir)
         LOG_INFO(ActivityLog, "activity: {} does not walk from ({:.0f}, {:.0f}, {:.0f}) to ({:.0f}, {:.0f}, {:.0f}){}: the path finder has no "
             "walkable ground there (a straight line of {:.0f} yd onto it){}", player->GetName(), player->GetPositionX(), player->GetPositionY(),
@@ -378,6 +395,8 @@ bool GroundGuard::WouldCancel(Player* player, float x, float y, float z) const
     bool const climbsAir = !usesPath && ((z - player->GetPositionZ() >= 3.0f && report.offGround - report.throughSolid >= 5.0f) ||
         EndsOffTheNavmesh(player, x, y, z));
     if (IsSwimming(player) && UnderTheFloor(player, x, y, z) > 0.0f)
+        return true;
+    if (!usesPath && !IsSwimming(player) && player->GetExactDist(x, y, z) >= MinDistance && ThroughWall(player, x, y, z))
         return true;
     return report.valid && (report.LeavesTheGround() || (climbsAir && !IsSwimming(player)));
 }

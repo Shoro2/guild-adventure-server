@@ -82,6 +82,11 @@ policy: master = the controlled bot, "stay" — unless it has an order (next sec
 
 ### The leader (2026-11-12)
 
+*Since 2026-11-28* (the owner: [quote left out]) the leader is the
+first row of the addon's Roster tab and has a bot's detail: orders, a talent template (he keeps his own talents until
+one is chosen), a profession plan, a dungeon role and fight profiles, applied while the AI plays him; no bench and no
+dismissal. The paragraphs below describe the rest as first built.
+
 the owner: the guild master shall level and quest in auto mode too. The leader can take an order like a guild bot:
 `AUTO`, `LEVEL_ZONE`, `IDLE` or `FOLLOW`, or `HOLD`, its default (no order). It has no roster row (no slot, no `ga_bot`
 row), so its plan lives beside the roster (`AdventureGuild::leaderPlan`, `leaderPlanned`); its order is a
@@ -3620,8 +3625,16 @@ Blackwing Lair, Zul'Gurub and the Ruins, and puts them on by itself on the raid'
   their reach stops at the edge), who stands in a pulse without one of them on it steps to the nearest place out of the
   reach of all of them, nobody runs "to the tank" while the tank stands among them, and a melee member does not turn to
   one that is on the healer (the owner, 2026-11-27: [quote left out];
-  his raid of 40 walked into twenty imps and died in 15 s). The line: `the group in Molten Core keeps out of the pulse
-  of Flame Imp (only its tank stands among them; melee damage dealers hold back while they fight)`;
+  his raid of 40 walked into twenty imps and died in 15 s). Garr's Firesworn are on the list too (Eruption at their
+  death, 15 yd, about 2000 fire): with the raid among them at its tank, its area spells took several from above 30 % to
+  dead at once and 19 died in one second (round 281, 2026-11-27), where the burst rule below steps out only from one
+  below 30 %. The line: `the group in Molten Core keeps out of the reach of Firesworn (only its tanks stand among them;
+  melee damage dealers hold back while they fight)`;
+- *the adds of a boss over the raid's tanks* (`OrderService::StepRaidAddTanks`): in a boss fight an add on a member who
+  is not a tank, the first add on the boss's tank or the third on another tank is taunted off by the tank (dungeon role)
+  with the fewest adds that does not hold the boss, every 2 s per tank, within 30 yd (Garr's eight Firesworn killed a
+  healer in three seconds, and on the second pull all eight stood on the main tank, which died in five). The line:
+  `the raid in Molten Core spreads the adds of Garr over its tanks: Bearyo taunts Firesworn (level 60) off Priestholy`;
 - *a boss that wiped the raid twice is left for that run* and the raid goes on to the next (`DungeonRun::bossWipes`), as a
   guild raid does with a boss beyond it: the five wipes are for the whole raid, not five tries at its first wall;
 - *repairs* at the start of a raid run and after each wipe, where the raid stands (the dungeon run's field repair);
@@ -9195,6 +9208,31 @@ it. And a creature of a holiday (its spawn is a game event's, it is neutral to t
 no quest of the bot wants it) is let go whatever the bot does, its grind included (`leaves ... alone: a creature of a
 holiday ...`, once in ten minutes), and a grind never picks one (`PickGrindTarget`); a farm order's grind may take
 it. A holiday's hostile creatures (the Scourge invasion) are fought as any other.
+
+**The early game from a player's log (2026-11-28).** Four new bots of a player of the public release (an orc in Durotar,
+three undead in Tirisfal) went from level 1 to 7-8 in an hour without a death; what was slow: (1) "Lazy Peons": the
+Foreman's Blackjack wakes only a peon asleep, few sleep at once, and the warrior walked to ten peon spawns in 13 minutes,
+45 s at each. A target with an aura condition is looked for 160 yd around the bot now, the nearest one that fits
+(`goes to Lazy Peon N yd away`). (2) "Night Web's Hollow": with its ten Young Night Web Spiders killed a mage went on
+pulling young spiders for four minutes, twice: a kill objective that is done wants nothing more (`QuestWants`), so the
+rule for creatures beside the way lets them go. (3) A vendor 25 yd below the bot (Sarkoth's cave above Huklah): the
+navmesh's way of 456 yd was found and not walked, the NPC task walked only from 30 yd on the map; it walks such a way
+until 8 yd from the NPC. ("The Mindless Ones" of a level-1 mage was the template it could not cast yet, fixed before.)
+The same player saw a bot walk through a wall of Stormwind's Trade District, at (-8842, 562, 95): the navmesh there is
+whole (`tools/navpath`: 550 yd to Furen Longbeard on it), so the walk was a straight line, and the ground guard sampled
+only the ground under a line, a floor on both sides of a wall. A straight line whose way the map's static models (WMO
+walls; doodads left out) block at chest height is refused now (`a straight line of N yd through a wall`).
+
+**Telany in Stormwind (2026-11-28, the owner's test).** A level-14 paladin: (1) on its way to the harbour every own step
+towards its route's next point, 80 yd off in the Trade District, came back from the core's path finder as a straight
+line ("normal + not using a path": the core stops after its limit of polygons, and the city's navmesh is dense), was
+refused, and the bot left its route and stood; the whole navmesh has a way of 84 yd there (`tools/navpath`). An own
+step whose path is not whole takes a point a step's length along the whole navmesh's way (`OwnStep`, `PointAlong`).
+(2) Westfall was written off for a camp of seven level-15 creatures at Demont's Place on the way to the lighthouse,
+past Saldean's Farm and Sentinel Hill, Loch Modan for a camp too, and it sailed for Darkshore. A travel into a zone
+refused for a group on its way now goes to the last point of its route inside the zone before that group
+(`travels only as far as ... in Westfall`) and works the zone from there; only when that way is refused too is the
+zone written off.
 
 **Groups far below the bot are no group it cannot take.** A level-46 warlock kept away from packs of three and four
 level-35 Kurzen Commandos, which cost it 10-20% a fight, until it used its hearthstone. Over the day's live fights

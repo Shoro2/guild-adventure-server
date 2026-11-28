@@ -48,6 +48,7 @@ namespace GuildAdventure
         uint32 budgetBotAllowance = 10000;      // ... and this much copper per guild character over its whole life
         uint32 budgetMemberPercent = 50;        // what one guild character gives of its own money for one such purchase at most
         uint32 guildTaxPercent = 10;            // share of a roster bot's income that goes into the guild bank (GuildBank.h)
+        uint32 perksGoldPerPoint = 100;         // gold a guild point of a perk costs when it is bought with gold (PerkService::Buy); 0 = no gold purchase
         uint32 unlocksPayFrom = 0;              // who pays a gold unlock (ProgressionService::BuyUnlock): 0 the guild bank, 1 the guild bank and then the leader, 2 the leader
         bool guildTaxHandovers = false;         // ... money handed over by trade or mail within the guild is taxed too
         bool lootFilterEnable = true;           // looted items of guild characters go through the guild's rules

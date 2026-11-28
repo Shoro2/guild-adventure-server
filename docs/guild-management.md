@@ -180,10 +180,14 @@ change. The zone list has no hub positions yet: travel targets arrive with M4.
   | 12 | Quick Hands (`gather_speed`) | +10..50 % mining, herb gathering and skinning speed | the same | CP-8 `OnPlayerSpellCastTime` |
   | 13 | Gills (`water_breathing`) | breathe under water | 100 | CP-8 `OnPlayerCheckWaterBreathing` |
   | 14 | Feather Light (`no_fall_damage`) | no fall damage | 100 | CP-8 `OnPlayerFallDamage` |
+  | 15 | Shared Maps (`shared_flight_paths`; the owner, 2026-11-28) | a flight path one character of the guild discovers, every character of its side knows: the others in the world at once, the rest at their login (the guild's set is read from the members' saved taximasks once after a start) | 150 | `OnPlayerLearnTaxiNode`, only with the perk; an activity line per discovery |
 
   "+x % speed" means x % faster: a cast time is divided by 1 + x/100. Without core patch CP-8 the module builds too and the
   five CP-8 perks are not offered (`avail = 0`). The addon's **Perks** tab shows the points, every perk with its rank, its
-  effect now and next, and a Buy button (`PERK_BUY`); a `PERK` event reports each purchase.
+  effect now and next, and a Buy button (`PERK_BUY`); a `PERK` event reports each purchase. **With gold** (the owner,
+  2026-11-28: [quote left out]): the row's second button buys the next rank for its points times `GuildAdventure.Perks.GoldPerPoint` gold
+  (100: a 100-point rank costs 10,000 g; 0 = off), paid as a gold unlock is (`Unlocks.PayFrom`: the guild bank, else the
+  leader); the guild points stay (`PERK_BUY^gold`, `STATE^gpgold` = copper per point; `.ga admin perk buy` stays points).
 - **Tiered guild achievements** (the owner, 2026-11-12: [quote left out]; `MilestoneService`): series that
   count one thing for the whole guild, each with tiers. A tier is reached once per guild (`ga_guild_milestone`), gives
   its points as guild points (perks, `STATE^msp`, part of `gp`) and points × `GuildAdventure.Achievements.RenownPerPoint`
