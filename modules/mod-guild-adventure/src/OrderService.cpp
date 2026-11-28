@@ -14200,10 +14200,13 @@ bool OrderService::StepTask(AdventureGuild& guild, GuildBot& bot, Player* player
             // Thornweaver's spawn in the Barrens, twice, while its AI turned to the Bristleback Hunters around it that its
             // set-aside quest wanted and the check before a pull let them go each time; 15 of the 20 spawns a bot gave up
             // that day for "no progress" it had stood 36 to 60 yd from. The count of an empty spawn stays a matter of
-            // standing close to it.)
+            // standing close to it.) (5 s, was 30: a bot that had killed its target 35 yd or more from the spawn it was sent to
+            // stood up to half a minute before it was turned to the next one in sight, which players took for waiting at the
+            // dead one's spawn for its respawn: undead bots in Deathknell on "Rattling the Rattlecages", Duskbats 52-67 yd
+            // off, 2026-11-28.)
             bool const closeToSpawn = task.hasSpot && Dist2d(player, task.spot) <= ObjectiveEmptyReach / 2.0f;
             if (task.hasSpot && task.nearSince && task.spot.entry && !player->IsInCombat() && !rt.rest.active && player->IsAlive() &&
-                (closeToSpawn || now - task.nearSince >= 30 * IN_MILLISECONDS))
+                (closeToSpawn || now - task.nearSince >= 5 * IN_MILLISECONDS))
             {
                 // A target the bot cannot see (a Shadowmaw Panther prowls in stealth): NewRpg finds nothing to attack, and
                 // the bot stood beside it until the watchdog's three minutes were over (402 s and 212 s on "Panther

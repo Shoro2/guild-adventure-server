@@ -109,13 +109,16 @@ namespace
     }
 
     // Rows of the replaced strategies a profile does not own (docs/fight-profiles.md sections 4.3, 4.11): movement and
-    // target housekeeping, the auto attack, what the module's own rules do (the wand, oils, stones, poisons, a caster's
-    // step back), and the pets'.
+    // target housekeeping, the auto attacks ("melee", a hunter's "auto shot"), what the module's own rules do (the
+    // wand, oils, stones, poisons, a caster's step back), and the pets'. ("auto shot" is the default action of the
+    // hunter's tree strategies, and no template has it: a new level-1 hunter on the Beast Mastery template stood
+    // beside its quest's Young Nightsaber with nothing it could do, Auto Shot gone and Raptor Strike out of reach,
+    // 2026-11-28.)
     bool IsModuleRow(std::string const& action)
     {
         static std::unordered_set<std::string> const rows = { "reach spell", "reach melee", "drop target",
             "check mount state", "reset", "set facing", "set behind", "flee", "blink back", "apply oil", "apply stone",
-            "apply poison", "shoot", "melee", "avoid aoe", "clean quest log" };
+            "apply poison", "shoot", "melee", "auto shot", "avoid aoe", "clean quest log" };
         return rows.count(action) || action.rfind("pet ", 0) == 0 || action.find(" pet") != std::string::npos;
     }
 
@@ -651,7 +654,11 @@ namespace
     class RuleSpellAction : public CastSpellAction
     {
     public:
-        RuleSpellAction(PlayerbotAI* ai, std::shared_ptr<RuleCore> core) : CastSpellAction(ai, core->spell), _core(std::move(core)) { }
+        RuleSpellAction(PlayerbotAI* ai, std::shared_ptr<RuleCore> core) : CastSpellAction(ai, core->spell), _core(std::move(core))
+        {
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(_core->rule.ref);
+            _nextSwing = info && (info->HasAttribute(SPELL_ATTR0_ON_NEXT_SWING_NO_DAMAGE) || info->HasAttribute(SPELL_ATTR0_ON_NEXT_SWING));
+        }
 
         Unit* GetTarget() override { return Chosen(bot, *_core); }
         bool isUseful() override { return Ready(botAI, bot, context, *_core) && CastSpellAction::isUseful(); }
@@ -659,6 +666,7 @@ namespace
 
         bool Execute(Event event) override
         {
+            SwingAt(GetTarget());
             if (!CastSpellAction::Execute(event))
                 return false;
             NoteFired(*_core);
@@ -666,7 +674,26 @@ namespace
         }
 
     private:
+        // A spell "on next swing" (Raptor Strike, Heroic Strike, Cleave, Maul) is cast with the next swing of the auto
+        // attack and not before. mod-playerbots' own action of such a spell gets the auto attack from its action node (the
+        // node of "raptor strike" has the prerequisite "melee"); a rule's action of the module's own has no node, so the
+        // spell was queued again and again and never cast: a level-1 hunter on the Beast Mastery template stood beside a
+        // Young Thistle Boar 3 yd away with "0 casts" until the fight was ended for it (2026-11-28; its strategies start
+        // the auto attack through that prerequisite alone). The rule starts the swings on its own target when it is in
+        // melee reach.
+        void SwingAt(Unit* target)
+        {
+            if (!_nextSwing || !target || target == bot || !target->IsAlive() || !bot->IsWithinMeleeRange(target) ||
+                !bot->IsValidAttackTarget(target))
+                return;
+            if (!bot->HasInArc(float(M_PI) / 2.0f, target))
+                bot->SetFacingToObject(target);
+            if (bot->GetVictim() != target || !bot->HasUnitState(UNIT_STATE_MELEE_ATTACKING))
+                bot->Attack(target, true);
+        }
+
         std::shared_ptr<RuleCore> _core;
+        bool _nextSwing = false;
     };
 
     // A usable item or a trinket of a rule: used as the client does (CMSG_USE_ITEM, as mod-playerbots' "use trinket").
@@ -1445,6 +1472,45 @@ uint8 FP::TalentTree(Player* player)
     return AiFactory::GetPlayerSpecTab(player);
 }
 
+namespace
+{
+    // Whether a template has something against a foe the bot can cast at its level: a spell of its fight list on its
+    // target or an enemy that the bot knows. Below the level of its first such spell a template is not played by
+    // default (FC12) and the bot plays mod-playerbots' rotation, which falls back on what the bot has: a level-1 mage
+    // (Frost by mod-playerbots' tree below level 10) has Fireball, and the Frost template's first spell against a foe is
+    // Frostbolt of level 4; it stood beside its first creature and never cast (a player's report, confirmed by the owner,
+    // 2026-11-28: "with the setting off it worked"). (A melee class swings under any template: "melee" is a row a
+    // profile does not own.)
+    bool HasSpellAgainstFoes(Player* player, FP::StoredProfile const& profile)
+    {
+        for (FP::Rule const& rule : profile.rules)
+            if (rule.list == FP::ListKind::Combat && rule.enabled && rule.kind == FP::ActionKind::Spell &&
+                (rule.target == FP::TargetKind::Current || rule.target == FP::TargetKind::Enemy) && HighestKnown(player, rule.ref))
+                return true;
+        return false;
+    }
+
+    uint32 PlayableTemplate(Player* player, uint32 id)
+    {
+        FP::StoredProfile const* profile = id ? sFightProfileStore.Get(id) : nullptr;
+        if (!profile || HasSpellAgainstFoes(player, *profile))
+            return id;
+        // (Said once per template and level.)
+        static std::mutex lock;
+        static std::unordered_map<uint64, uint64> noted;
+        uint64 const said = (uint64(id) << 8) | player->GetLevel();
+        std::lock_guard<std::mutex> guard(lock);
+        if (noted[player->GetGUID().GetRawValue()] != said)
+        {
+            noted[player->GetGUID().GetRawValue()] = said;
+            LOG_INFO(ActivityLog, "activity: {} plays the default of mod-playerbots, not the template #{} \"{}\" of its talent tree: "
+                "it knows none of the template's spells against a foe yet (level {})", player->GetName(), profile->id, profile->name,
+                uint32(player->GetLevel()));
+        }
+        return 0;
+    }
+}
+
 uint32 FP::DefaultFor(Player* player, bool groupSlot)
 {
     if (!sBotSettings.IsOn(player, GuildAdventure::Setting::FightTemplatesByDefault))
@@ -1456,10 +1522,10 @@ uint32 FP::DefaultFor(Player* player, bool groupSlot)
     // solo template of its tree first, else the one of its role (a healer that levels alone heals itself and fights).
     uint8 const role = PlayerbotAI::IsTank(player, true) ? TemplateTank : PlayerbotAI::IsHeal(player, true) ? TemplateHeal : TemplateSolo;
     if (groupSlot)
-        return sFightProfileStore.TemplateFor(classId, tab, role);
+        return PlayableTemplate(player, sFightProfileStore.TemplateFor(classId, tab, role));
     if (uint32 const solo = sFightProfileStore.TemplateFor(classId, tab, TemplateSolo))
-        return solo;
-    return role != TemplateSolo ? sFightProfileStore.TemplateFor(classId, tab, role) : 0;
+        return PlayableTemplate(player, solo);
+    return role != TemplateSolo ? PlayableTemplate(player, sFightProfileStore.TemplateFor(classId, tab, role)) : 0;
 }
 
 void FP::Keep(Player* player, bool groupSlot)

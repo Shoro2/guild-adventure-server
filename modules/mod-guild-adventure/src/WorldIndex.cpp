@@ -220,6 +220,7 @@ void WorldIndex::IndexSpawns()
             eventCreatures.insert(result->Fetch()[0].Get<uint32>());
         while (result->NextRow());
     }
+    _eventCreatureSpawns = eventCreatures;
     std::unordered_set<ObjectGuid::LowType> eventObjects;
     if (QueryResult result = WorldDatabase.Query("SELECT guid FROM game_event_gameobject WHERE eventEntry > 0"))
     {

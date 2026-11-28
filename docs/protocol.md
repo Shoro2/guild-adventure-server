@@ -224,6 +224,7 @@ All intents accept an optional `r` (int). Defaults apply to keys that are missin
 | `GET` | `what` = `state` \| `control` \| `roster` \| `bot` \| `zones` \| `unlocks` \| `events` \| `storage` \| `loot` \| `lootlog` \| `recipes` \| `auctions` \| `shopping` \| `perks` \| `milestones` \| `settings` \| `dungeons` \| `fightprofiles` \| `fightprofile` · `g` int (for `bot`, `fightprofiles`, `fightprofile`; for `recipes` the guild bot, default the character the client plays) · `id` int (for `fightprofile`, 0 = the bot's template) | the record or full block; `zones` is always sent, `settings` sends the schema and the values |
 | `ORDER_SET` | `g` int · `o` order type (§8.1) · `zone` int (`LEVEL_ZONE`, `GRIND`, `QUEST`, `GATHER`) · `aa` bool auto-advance · `lc` int AUTO level cap (0 = none) · `cont` int AUTO continent map id (-1 = anywhere) · `nd` bool AUTO avoid dungeons · `gcap` int AUTO max copper per trip (0 = no limit) | `BOT` delta, `EVENT ORDER`, `ACK` |
 | `BOT_STATE` | `g` int · `s` = `active` \| `benched` | `BOT` delta, `STATE`, `ACK` |
+| `BOT_DISMISS` | `g` int · `name` str, the bot's name (a guard: refused with `BAD_REQUEST` when it does not match) | the character is deleted for good, what the guild storage takes of its items (not soulbound) and its gold stay with the guild (docs/guild-management.md "Dismissing a bot"): `BOT_REMOVE`, `STATE`, `EVENT DISMISS`, `ACK`; refused with `BUSY` while the owner plays it, while it logs in or during a dungeon run; a bot that is not in the world logs in for it first and the `ACK` comes when it is gone |
 | `PROF_SET` | `g` int · `p1`, `p2` int primary skill ids (0 = none) · `t1`, `t2` int target skill (75/150/225/300/375/450) · `sec` list of secondary skill ids to learn | `BOT` delta, `ACK` |
 | `RECRUIT` | `race` int · `class` int · `gender` int (0 male, 1 female) · `name` str | `BOT` (new), `STATE`, `EVENT RECRUIT`, `ACK` |
 | `CONTROL_TAKE` | `g` int — the bot to play | `CONTROL_STATE^busy=1`, then `ACK` (swap accepted and started), or `ERROR SWAP_REFUSED` with `reason`; the result follows as `CONTROL_STATE` with the new `g` (see §9) |
@@ -399,7 +400,7 @@ it is not.
 | `gph` | int | copper per hour (rolling) |
 | `since` | int | recruitment time |
 
-`BOT_REMOVE^g=<guid>` removes a bot from the roster (dismissed or deleted).
+`BOT_REMOVE^g=<guid>` removes a bot from the roster (dismissed, `BOT_DISMISS`, or deleted).
 
 ### 7.5 `ZONE` — one zone template row (`ga_zone_template`)
 
@@ -927,7 +928,7 @@ in or the offline window ran out).
 `LEVEL_UP` · `DEATH` · `QUEST_DONE` · `ZONE_CHANGE` (moved to a new zone) · `ZONE_DONE`
 (out-levelled its zone) · `PROF_UP` (profession milestone) · `RENOWN` (renown gained) ·
 `RENOWN_LEVEL` · `UNLOCK` · `RECRUIT` · `ORDER` (order changed) · `CONTROL` (control swap) ·
-`LOGIN` · `LOGOUT` · `INFO` · `ACHIEVEMENT` (a new guild achievement, or achievements a character brought into
+`LOGIN` · `LOGOUT` · `INFO` · `DISMISS` (a bot was dismissed: the message says what went into the guild storage and the guild bank; `lvl` = its level) · `ACHIEVEMENT` (a new guild achievement, or achievements a character brought into
 the guild when it entered the world; `pts` = the renown they gave) · `PERK` (the guild bought a perk rank, `lvl` = the
 rank, or its perks were reset) · `MILESTONE` (the guild reached a tier of a tiered guild achievement, or several at
 once in one line; `lvl` = the tier, `pts` = the renown) · `GEAR` (a bot bought a weapon or an armour piece and the guild paid part of it, or

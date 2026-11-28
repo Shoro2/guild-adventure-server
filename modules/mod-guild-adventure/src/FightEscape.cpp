@@ -3439,14 +3439,20 @@ static bool OffItsWork(Player* player, BotRuntime& rt, Creature* target)
         return false;
     if (!rt.task.spot.gameObject && rt.task.spot.entry && target->GetEntry() == rt.task.spot.entry)
         return false;
-    constexpr float ReachMargin = 5.0f;
-    constexpr float MinReach = 12.0f;
-    float const reach = std::max(MinReach, target->GetAggroRange(player) + ReachMargin);
-    if (target->GetExactDist2d(player) <= reach)
-        return false;
-    std::vector<std::pair<float, float>> const way = WayAhead(player, 45.0f, 0.0f);
-    if (way.size() >= 2 && WayDistanceAlong(target, way) <= reach)
-        return false;
+    // (A creature that does not attack by itself, a neutral one, stands in nobody's way however near it is: a level-1
+    // bot with skeletons and carrion birds to kill for its quests killed every Wild Turkey of Pilgrim's Bounty that
+    // came within 12 yd of it, 2026-11-28.)
+    if (target->IsHostileTo(player))
+    {
+        constexpr float ReachMargin = 5.0f;
+        constexpr float MinReach = 12.0f;
+        float const reach = std::max(MinReach, target->GetAggroRange(player) + ReachMargin);
+        if (target->GetExactDist2d(player) <= reach)
+            return false;
+        std::vector<std::pair<float, float>> const way = WayAhead(player, 45.0f, 0.0f);
+        if (way.size() >= 2 && WayDistanceAlong(target, way) <= reach)
+            return false;
+    }
     // (Looked at last: it walks the quest log.)
     static std::unordered_map<ObjectGuid, std::pair<ObjectGuid, bool>> wanted;
     std::pair<ObjectGuid, bool>& known = wanted[player->GetGUID()];
@@ -3474,6 +3480,19 @@ static bool IsBystander(Player* player, Creature* target)
     FactionTemplateEntry const* faction = target->GetFactionTemplateEntry();
     bool const serves = (target->GetNpcFlags() & Services) && faction && !faction->IsHostileToPlayers();
     if (!civilian && !serves)
+        return false;
+    return !QuestWants(player, target);
+}
+
+// A creature of a holiday: one whose spawn exists only while a game event runs, that does not attack by itself and
+// does not fight the bot, and that no quest of the bot wants. mod-playerbots takes the nearest creature with loot that
+// gives experience, and during Pilgrim's Bounty that was a Wild Turkey (level 1, neutral, loot) beside every starting
+// area: level-1 bots killed turkeys among the skeletons and carrion birds of their quests (a player's report, confirmed
+// by the owner, 2026-11-28). Not in a fight the bot is in, nor during the grind of a farm order (PickGrindTarget).
+static bool IsHolidayCreature(Player* player, Creature* target)
+{
+    if (!target || target->GetVictim() == player || target->IsInCombatWith(player) || target->IsHostileTo(player) ||
+        !sWorldIndex.IsEventSpawn(target->GetSpawnId()))
         return false;
     return !QuestWants(player, target);
 }
@@ -4042,6 +4061,22 @@ Escape::Pull Escape::CheckPull(Player* player, BotRuntime& rt, float& x, float& 
     {
         BotDriver::LetGo(player, target);
         NoteBystander(player, rt, target, false);
+        return Pull::Held;
+    }
+    // Nor a creature of a holiday (IsHolidayCreature), whatever the bot does; a farm order's grind may take it.
+    if (!(rt.task.kind == TaskKind::Grind && rt.task.farmItem) && IsHolidayCreature(player, target))
+    {
+        BotDriver::LetGo(player, target);
+        constexpr uint32 NoteAgainMs = 10 * MINUTE * IN_MILLISECONDS;
+        static std::unordered_map<ObjectGuid, uint32> noted;
+        uint32 const nowMs = getMSTime();
+        if (!noted.count(player->GetGUID()) || getMSTimeDiff(noted[player->GetGUID()], nowMs) >= NoteAgainMs)
+        {
+            noted[player->GetGUID()] = std::max<uint32>(nowMs, 1);
+            LOG_INFO(ActivityLog, "activity: {} leaves {} (level {}, {:.0f} yd) alone: a creature of a holiday (its spawn is a "
+                "game event's) that does not attack it, and none of its quests wants it", rt.name, target->GetName(),
+                uint32(target->GetLevel()), player->GetExactDist(target));
+        }
         return Pull::Held;
     }
     // A rest is due and there is no place for it (in the water, no dry ground in reach): no fight until its health and

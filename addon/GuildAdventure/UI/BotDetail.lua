@@ -52,6 +52,86 @@ function UI.Confirm(text, onAccept)
 end
 
 -------------------------------------------------------------------------------
+-- Dismissing a bot: the character is deleted for good, so the bot's name has to be typed in.
+-------------------------------------------------------------------------------
+
+local function DismissNameMatches(box, data)
+    return box and data and data.name and box:GetText():lower() == data.name:lower()
+end
+
+local function DismissBox(self)
+    return self.editBox or (self.GetName and _G[self:GetName() .. "EditBox"])
+end
+
+StaticPopupDialogs["GUILDADVENTURE_DISMISS"] = {
+    text = "%s",
+    button1 = "Dismiss",
+    button2 = CANCEL,
+    hasEditBox = 1,
+    maxLetters = 12,
+    OnShow = function(self)
+        local box = DismissBox(self)
+        if box then
+            box:SetText("")
+            box:SetFocus()
+        end
+        if self.button1 then
+            self.button1:Disable()
+        end
+    end,
+    EditBoxOnTextChanged = function(self, data)
+        local button = self:GetParent().button1
+        if button then
+            if DismissNameMatches(self, data) then
+                button:Enable()
+            else
+                button:Disable()
+            end
+        end
+    end,
+    OnAccept = function(self, data)
+        if DismissNameMatches(DismissBox(self), data) and data.onAccept then
+            data.onAccept()
+        end
+    end,
+    EditBoxOnEnterPressed = function(self)
+        local parent = self:GetParent()
+        local data = parent.data
+        if DismissNameMatches(self, data) and data.onAccept then
+            data.onAccept()
+            parent:Hide()
+        end
+    end,
+    EditBoxOnEscapePressed = function(self)
+        self:GetParent():Hide()
+    end,
+    timeout = 0,
+    whileDead = 1,
+    hideOnEscape = 1,
+}
+
+function UI.DismissText(bot)
+    local name = bot.n or "this bot"
+    return string.format("Dismiss %s?\n\n%s is deleted for good. What the guild storage takes of its items (nothing soulbound) "
+        .. "goes there and its gold into the guild bank; the slot is free again. Renown and unlocks stay.\n\n"
+        .. "|cffff4040This cannot be undone.|r Type the name to confirm:", name, name)
+end
+
+function UI.AskDismiss(bot)
+    if not bot then
+        return
+    end
+    local g, name = bot.g, bot.n or ""
+    StaticPopup_Show("GUILDADVENTURE_DISMISS", UI.DismissText(bot), nil, { name = name, onAccept = function()
+        UI.DismissBot(g, name)
+    end })
+end
+
+function UI.DismissBot(g, name)
+    Protocol.DismissBot(g, name, UI.RequestCallback(name .. " was dismissed."))
+end
+
+-------------------------------------------------------------------------------
 -- Zone helpers
 -------------------------------------------------------------------------------
 
@@ -1300,6 +1380,12 @@ local function Create(parent)
         end
     end)
     f.bench:SetPoint("RIGHT", f.control, "LEFT", -6, 0)
+    f.dismiss = W.Button(f, "Dismiss", 80, 22, function()
+        UI.AskDismiss(CurrentBot())
+    end)
+    f.dismiss:SetPoint("RIGHT", f.bench, "LEFT", -6, 0)
+    W.SetTooltip(f.dismiss, "Dismiss", "Deletes the bot for good and frees its slot. Its items that are not soulbound go into "
+        .. "the guild storage, its gold into the guild bank. You are asked first.")
 
     -- sub-tabs
     f.subContent = W.Panel(f, 0.3)
@@ -1348,6 +1434,7 @@ local function RefreshHeader(f, bot)
     end
     f.bench:SetText(bot.s == "benched" and "Activate" or "Bench")
     W.SetEnabled(f.bench, connected and bot.s ~= "controlled")
+    W.SetEnabled(f.dismiss, connected and bot.s ~= "controlled")
 
     for i, def in ipairs(SUBTABS) do
         local tab = _G["GuildAdventureBotDetailTab" .. i]

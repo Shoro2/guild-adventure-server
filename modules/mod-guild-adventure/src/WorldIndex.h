@@ -198,6 +198,9 @@ public:
     // .. early in a fight, not only nearly dead: on a timer of the fight, or at half its health or more (the Mossflayer
     // Scouts of the Eastern Plaguelands run 4 s into every fight). Such a creature surely fetches its helper.
     [[nodiscard]] bool FleesForHelpEarly(uint32 creatureEntry) const { return _earlyFleeingEntries.count(creatureEntry) != 0; }
+    // Whether a creature's spawn exists only while a game event runs (a holiday, the Scourge invasion): the 3125 Wild
+    // Turkeys of Pilgrim's Bounty, for one, stand beside every starting area while it lasts.
+    [[nodiscard]] bool IsEventSpawn(ObjectGuid::LowType spawnId) const { return spawnId && _eventCreatureSpawns.count(spawnId) != 0; }
     // The yards within which a creature's script calls every creature of its side for help in a fight (in combat, at a
     // health, on aggro: SMART_ACTION_CALL_FOR_HELP), 0 for none: a Deadwood Den Watcher calls them within 20 yd at half
     // its health, wherever the fight stands.
@@ -315,6 +318,7 @@ private:
     std::unordered_set<uint32> _questContainers;                                           // items to open
     std::unordered_set<uint32> _fleeingEntries;                                            // creatures that run for help
     std::unordered_set<uint32> _earlyFleeingEntries;
+    std::unordered_set<ObjectGuid::LowType> _eventCreatureSpawns;
     std::unordered_set<uint32> _knockbackEntries;                                         // creatures that knock back
     std::unordered_map<uint32, float> _callsForHelp;                                       // creature -> yards it calls within
     std::unordered_set<uint32> _stunningEntries;                                          // creatures that stun every few s

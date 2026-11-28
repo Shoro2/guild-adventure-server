@@ -1062,7 +1062,7 @@ UI.RegisterPage("settings", { tab = "settings", create = CreateSettings, refresh
 -- Only milestones go to chat; quests, orders and info stay in the event feed.
 local CHAT_EVENTS = {
     LEVEL_UP = true, DEATH = true, ZONE_CHANGE = true, ZONE_DONE = true, PROF_UP = true,
-    RENOWN_LEVEL = true, UNLOCK = true, RECRUIT = true, CONTROL = true, ACHIEVEMENT = true, MILESTONE = true, PERK = true, GEAR = true,
+    RENOWN_LEVEL = true, UNLOCK = true, RECRUIT = true, DISMISS = true, CONTROL = true, ACHIEVEMENT = true, MILESTONE = true, PERK = true, GEAR = true,
 }
 
 GA.On("EVENT", function(event)

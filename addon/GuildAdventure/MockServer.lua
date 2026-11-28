@@ -1665,6 +1665,31 @@ INTENTS.BOT_STATE = function(f)
     Ack(r)
 end
 
+-- A bot is dismissed (deleted): its spare items go into the storage and its gold into the guild bank on the server;
+-- the mock only takes it off the roster.
+INTENTS.BOT_DISMISS = function(f)
+    local r = Codec.Int(f.r)
+    local g = Codec.Int(f.g, 0)
+    local bot = S.bots[g]
+    if not bot then
+        return ReplyError(r, "NOT_OWNER", "That character is not one of your guild bots.")
+    end
+    if (f.name or ""):lower() ~= (bot.n or ""):lower() then
+        return ReplyError(r, "BAD_REQUEST", "The name does not match: this bot is " .. bot.n .. ".")
+    end
+    if bot.s == "controlled" then
+        return ReplyError(r, "BUSY", "You play " .. bot.n .. " right now: take another character first.")
+    end
+    S.bots[g] = nil
+    dirtyBots[g] = nil
+    Reply("BOT_REMOVE", { g = g })
+    AddEvent("DISMISS", 0, bot.n .. " (level " .. (bot.lvl or 1) .. ") was dismissed: nothing for the guild storage.",
+        { lvl = bot.lvl })
+    dirtyState = true
+    FlushDirty()
+    Ack(r)
+end
+
 local VALID_CAPS = { [0] = true, [75] = true, [150] = true, [225] = true, [300] = true, [375] = true, [450] = true }
 
 INTENTS.PROF_SET = function(f)

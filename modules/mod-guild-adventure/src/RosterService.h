@@ -85,6 +85,15 @@ public:
 
     GuildAdventure::RosterResult SetBotState(GuildAdventure::AdventureGuild& guild, ObjectGuid bot, GuildAdventure::BotState state);
 
+    // Dismissing a bot (the owner, 2026-11-28: [quote left out]): what the guild storage takes of its items (not
+    // soulbound) goes there, its gold into the guild bank, then the character is deleted for good and its slot is free.
+    // A bot that is not in the world is logged in for it first. 'done' runs on the world thread once it is gone (or the
+    // dismissal failed), at once when it was in the world. Refused while the owner plays it, while it logs in and while
+    // it is on a dungeon run.
+    GuildAdventure::RosterResult Dismiss(GuildAdventure::AdventureGuild& guild, ObjectGuid bot,
+        std::function<void(GuildAdventure::RosterResult const&)> done);
+    [[nodiscard]] bool IsBeingDismissed(ObjectGuid bot) const { return _pendingDismiss.count(bot) != 0; }
+
     // Logs in every active bot of the guild that is not in the world. master may be null.
     void LoginActiveBots(GuildAdventure::AdventureGuild& guild, Player* master);
     // A leader with an order plays on without its owner (docs/orders.md "The leader"): logs it in on a home session
@@ -120,6 +129,16 @@ private:
 
     AsyncCallbackProcessor<TransactionCallback> _transactions;
     std::unordered_map<ObjectGuid, PendingRecruit> _pendingRecruits;
+    // Bots being dismissed that had to log in first (Dismiss); finished by Update once they are in the world.
+    struct PendingDismiss
+    {
+        uint32 ownerAccount = 0;
+        uint32 since = 0; // getMSTime
+        std::function<void(GuildAdventure::RosterResult const&)> done;
+    };
+    std::unordered_map<ObjectGuid, PendingDismiss> _pendingDismiss;
+    void UpdateDismissals();
+    GuildAdventure::RosterResult FinishDismiss(GuildAdventure::AdventureGuild& guild, ObjectGuid guid, Player* player);
     std::unordered_set<ObjectGuid> _guildChecked; // bots whose guild membership was checked since they entered the world
     uint32 _refreshTimer = 0;
     // Guilds playerbots does not count as real yet (BotDriver::IsRealGuild): how often its list was read again for them.

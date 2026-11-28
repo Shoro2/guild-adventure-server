@@ -672,6 +672,12 @@ std::vector<RolePiece> const* RoleService::GetStore(ObjectGuid bot) const
     return state ? &state->store : nullptr;
 }
 
+void RoleService::Forget(ObjectGuid bot)
+{
+    // (Its rows, ga_bot_role and ga_bot_role_gear, go with the dismissal's own cleanup: RosterService::Dismiss.)
+    _roles.erase(bot.GetCounter());
+}
+
 uint32 RoleService::CountDungeonPieces(ObjectGuid bot) const
 {
     BotRole const* state = Find(bot);

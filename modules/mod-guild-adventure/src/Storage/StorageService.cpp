@@ -836,6 +836,41 @@ uint32 StorageService::DepositItem(Player* player, Item* item, std::string& erro
     return count;
 }
 
+uint32 StorageService::DepositDismissed(Player* player, Item* item, std::string& error)
+{
+    uint32 const owner = GetOwnerOf(player);
+    if (!owner)
+    {
+        error = "not a guild character";
+        return 0;
+    }
+    if (!item || item->GetOwnerGUID() != player->GetGUID())
+    {
+        error = "not its item";
+        return 0;
+    }
+    uint32 const maxDurability = item->GetUInt32Value(ITEM_FIELD_MAXDURABILITY);
+    if (item->GetUInt32Value(ITEM_FIELD_DURABILITY) < maxDurability)
+        item->SetUInt32Value(ITEM_FIELD_DURABILITY, maxDurability);
+    if (char const* reason = RefuseReason(item))
+    {
+        error = reason;
+        return 0;
+    }
+
+    uint32 const count = item->GetCount();
+    if (!Add(owner, item->GetTemplate(), item->GetItemRandomPropertyId(), count))
+    {
+        error = "cannot be stored";
+        return 0;
+    }
+    if (item->IsSoulBound())
+        ForgetUnworn(item, "stored");
+    player->DestroyItem(item->GetBagSlot(), item->GetSlot(), true);
+    Touch(player);
+    return count;
+}
+
 std::pair<uint32, uint32> StorageService::DepositMaterials(Player* player, std::vector<GuildAdventure::StorageItem>* moved,
     std::function<bool(Item*)> const& keep)
 {

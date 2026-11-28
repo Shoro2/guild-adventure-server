@@ -90,6 +90,23 @@ change. The zone list has no hub positions yet: travel targets arrive with M4.
   the bot gets its slot, order `AUTO` (D16), joins the WoW guild and logs in at once.
 - **Bench / activate** (`BOT_STATE`, `.ga bot bench|activate`): benching logs an AI-driven bot
   out; a controlled or loading bot cannot be benched. Activating logs it in while the owner is online.
+- **Dismissing a bot** (`BOT_DISMISS`, the bot detail's **Dismiss**, `.ga bot dismiss <name> confirm`,
+  `.ga admin dismiss <bot> confirm`; `RosterService::Dismiss`; the owner, 2026-11-28: [quote left out]): the
+  character is deleted for good and its slot is free. Before that, what the guild storage takes of it goes there:
+  every item in its bags, its bank and its bags there, on its body and in its role store's dungeon set that is not
+  soulbound and that the storage accepts at all (no quest items, nothing conjured, timed or enchanted; worn pieces
+  are mended; ammunition is taken: `StorageService::DepositDismissed`), and its gold goes into the guild bank
+  (`GuildBank::Deposit`; with no WoW guild it goes with the character). The storage's rows are written at once
+  (`FlushNow`), then the bot is logged out (saved without what went to the guild), forgotten by the order planner,
+  the squads (a squad it led is free), the dungeon roles and the bot settings, deleted with the core's own
+  `Player::DeleteFromDB` (final delete: its mail goes back to the senders, it leaves the WoW guild, the realm's
+  character count follows) and its rows of the module's tables are deleted (the event log keeps its lines). The
+  owner gets `BOT_REMOVE`, `STATE` and an event `DISMISS` that says what went where; the activity log names each
+  kind. Refused while the owner plays it (also in watch mode), while it logs in and while it is on a dungeon run (its
+  own or its squad leader's). A bot that is not in the world (benched, or the owner offline) logs in for it first
+  (`RosterService::UpdateDismissals` finishes it once it is in the world, gives up after 120 s). Renown, unlocks,
+  achievements and perks belong to the guild and stay; the bot account stays in the owner's pool for the next recruit.
+  The addon asks first and wants the bot's name typed in; the command wants the word `confirm`.
 - **Orders** (`ORDER_SET`, `.ga bot order`): `AUTO`, `IDLE`, `FOLLOW`, `LEVEL_ZONE <zone>` are
   validated and stored (zone of the guild's faction or contested, order allowed in the zone; AUTO
   limits only with `auto_limits`). Since M4 the bots act on their order and the roster's `why` line says what
@@ -239,6 +256,8 @@ sent while the bot is in the world.
 | `.ga bot recruit <race> <class> <gender> <name>` | recruit a bot (ids as in protocol.md §8.7, gender 0/1) |
 | `.ga bot order <name> <order> [zone id]` | set an order |
 | `.ga bot bench <name>` / `.ga bot activate <name>` | bench / activate |
+| `.ga bot dismiss <name> [confirm]` | dismiss a bot for good (see "Dismissing a bot"); without `confirm` it says what would happen |
+| `.ga admin dismiss <bot> [confirm]` | administrator, also console / SOAP: the same for the guild the bot belongs to (test aid) |
 | `.ga reload` | reload the world templates (also from the console / SOAP) |
 | `.ga achievements [character]` | the guild's achievements (count, points, renown, the newest ten); with a character (also console / SOAP), that character's guild and how many of the guild's shareable achievements it has |
 | `.ga perks [character]` | the guild's points (earned, granted, spent) and every perk with its rank and next cost (also console with a character) |

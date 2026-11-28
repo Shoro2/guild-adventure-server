@@ -128,6 +128,7 @@ private:
     void OnGet(uint32 accountId, Player* player, GuildAdventure::AdventureGuild& guild, Message const& message);
     void OnOrderSet(uint32 accountId, GuildAdventure::AdventureGuild& guild, Message const& message);
     void OnBotState(uint32 accountId, GuildAdventure::AdventureGuild& guild, Message const& message);
+    void OnBotDismiss(uint32 accountId, GuildAdventure::AdventureGuild& guild, Message const& message);
     void OnProfSet(uint32 accountId, GuildAdventure::AdventureGuild& guild, Message const& message);
     void OnRecruit(uint32 accountId, GuildAdventure::AdventureGuild& guild, Message const& message);
     void OnControl(uint32 accountId, Player* player, GuildAdventure::AdventureGuild& guild, Message const& message, bool take);

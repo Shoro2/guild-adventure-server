@@ -631,6 +631,12 @@ function Protocol.SetBotState(g, state, cb)
     return Protocol.Request("BOT_STATE", { g = g, s = state }, cb)
 end
 
+-- Dismisses a bot for good (docs/protocol.md section 6): name must be the bot's name, a guard against acting on
+-- another bot than the one the player confirmed.
+function Protocol.DismissBot(g, name, cb)
+    return Protocol.Request("BOT_DISMISS", { g = g, name = name }, cb)
+end
+
 -- plan: { p1, p2, t1, t2, sec = { skillId, ... } }
 function Protocol.SetProfessions(g, plan, cb)
     return Protocol.Request("PROF_SET", {

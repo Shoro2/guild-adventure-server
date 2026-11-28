@@ -2428,6 +2428,53 @@ Test("no stray globals", function()
     end
 end)
 
+Test("dismiss a bot: the name has to be typed in", function()
+    local bots = Bots()
+    local bot = bots[#bots]
+    local g, name = bot.g, bot.n
+    local before = GA.State.BotCount()
+    GA.UI.ShowBot(g)
+    Pump(0.2)
+    local dismiss
+    for _, o in ipairs(Stub.Objects()) do
+        if rawget(o, "__type") == "Button" and o:GetText() == "Dismiss" and o:IsVisible() then
+            dismiss = o
+        end
+    end
+    Check(dismiss ~= nil, "the bot detail has a Dismiss button")
+    local popups = #Stub.popups
+    dismiss:Click()
+    Equal(#Stub.popups, popups + 1, "dismiss asks first")
+    local dialog = Stub.popups[#Stub.popups]
+    Equal(dialog.which, "GUILDADVENTURE_DISMISS", "... with the dismiss popup")
+    Check(string.find(dialog.text, "cannot be undone", 1, true) ~= nil, "... which says it cannot be undone")
+    Check(string.find(dialog.text, "guild storage", 1, true) ~= nil and string.find(dialog.text, "guild bank", 1, true) ~= nil,
+        "... and where the items and the gold go")
+    -- a wrong name does nothing
+    dialog.editBox = { GetText = function() return "Someoneelse" end }
+    dialog.info.OnAccept(dialog, dialog.data)
+    Pump(1)
+    Check(GA.State.bots[g] ~= nil, "a wrong name dismisses nobody")
+    -- the right name, in other letters' case, dismisses it
+    dialog.editBox = { GetText = function() return string.upper(name) end }
+    dialog.info.OnAccept(dialog, dialog.data)
+    table.remove(Stub.popups)
+    Pump(1)
+    Check(GA.State.bots[g] == nil, "the bot is off the roster")
+    Equal(GA.State.BotCount(), before - 1, "one bot fewer")
+    local found
+    for _, e in ipairs(GA.State.events) do
+        if e.type == "DISMISS" and string.find(e.msg or "", name, 1, true) then
+            found = true
+        end
+    end
+    Check(found, "a DISMISS event names it")
+    local code
+    GA.Protocol.DismissBot(bots[1].g, "Notitsname", function(ok, c) code = c end)
+    Pump(1)
+    Equal(code, "BAD_REQUEST", "the server refuses a name that does not match")
+end)
+
 Test("textures used", function()
     local list = {}
     for path in pairs(Stub.textures) do

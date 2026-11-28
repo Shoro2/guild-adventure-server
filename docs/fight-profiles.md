@@ -381,7 +381,7 @@ from `character_aura` after `.saveall`). No crash, no new line in `Errors.log`, 
 - **What a profile stores:** only the rules it owns. The rows of the replaced strategies it does not own are read from
   the bot's strategies each time the profile goes in and emitted as they are: in the fight list movement and target
   housekeeping (reach spell, reach melee, drop target, check mount state, reset, set facing, set behind), the auto
-  attack ("melee"), the module's own (the wand "shoot", "flee", "blink back", oils, stones, poisons) and every row of
+  attacks ("melee", and a hunter's "auto shot" since 2026-11-28), the module's own (the wand "shoot", "flee", "blink back", oils, stones, poisons) and every row of
   a pet; in the buff list every row that is no buff (§7). `cure` is no longer replaced (§4.3).
 - **Conditions** (§4.2's catalogue for v1, the text form `[!]key[:param][op value]`, joined by `;`, a value may name
   an option as `$key`): *me* hp, mana, manapts, rage, energy, runic, combo, combat, aura:spell, stacks:spell, moving,
@@ -756,3 +756,53 @@ fight profiles, 33 templates (solo 24, tank 4, heal 5)".
 
 **Install**: the world SQL `ga_fight_template.sql` (its tables are dropped and made anew with the column; the DB updater
 applies it), the module build (no new source file), the conf key (the default is fine), the addon (no TOC change).
+
+**A hunter without Auto Shot** (2026-11-28; the owner: [quote left out]). A level-1 night elf
+hunter recruited on the integration server picked up its quests, turned to its first Young Nightsaber and stood in
+the combat engine with nothing to do (`.ga bot plan`: "combat engine; last action: "; no fight began, so the
+fallback of FC9 never came). It played the template of its tree by default (FC12), "Hunter Solo Beast Mastery
+(wowbot335)": the profile stands in for mod-playerbots' strategies aoe, bm and cc, and "auto shot", the default
+action of the hunter's three tree strategies (relevance 5.1), was one of the rows the profile owned and so left
+out; no template has a rule for it. At level 1 that left Raptor Strike (within 5 yd, never walked to) and nothing
+else; at every level it cost the hunter its auto shot. "auto shot" is a row the profile does not own now, as the
+other auto attacks (`IsModuleRow`): it goes back into the rotation from the bot's own strategies, with its own
+relevance, under every hunter profile and template.
+
+*The swings for a spell on next swing.* That was half of it: a new level-1 hunter of the probe guild on the same
+template still stood beside a Young Thistle Boar 3 yd away, inside Auto Shot's least range, with "0 casts", until the
+module ended the fight for it and FC9 put it back on the default, on which it won its next four fights. Its rule
+"Raptor Strike, within 5 yd" fired and never landed: Raptor Strike, like Heroic Strike, Cleave and Maul, is a spell
+"on next swing", cast only with the next swing of the auto attack, and a hunter's strategies start that auto attack
+only through the prerequisite "melee" in the action node of mod-playerbots' own "raptor strike"; a rule's action of
+the module's own (`RuleSpellAction`) has no node and so no prerequisite. A rule with such a spell starts the auto
+attack on its own target first when that stands in melee reach (`RuleSpellAction::SwingAt`).
+
+*A template the bot cannot play yet.* A player of the public release reported, and the owner confirmed, that a level-1
+(undead) mage did not level under the templates and did with `Fight.TemplatesByDefault` off. Below level 10
+mod-playerbots counts a mage's talent tree as Frost (`AiFactory::GetPlayerSpecTab`), so the bot played "Mage Solo Frost
+(wowbot335)", whose first spell against a foe is Frostbolt (level 4); a level-1 mage has Fireball, which the template
+has not, and no wand. mod-playerbots' Frost rotation ends in Shoot and Fireball (its default actions 5.1 and 5.0) and
+plays at level 1. The first spell against a foe of each template (Spell.dbc's spell level of the rule's first rank):
+
+| Template (below level 10 the tree mod-playerbots counts) | First spell against a foe |
+|---|---|
+| Warrior Arms, Fury; tank | Heroic Strike, 1 (on next swing: swings since the commit before) |
+| Paladin Retribution, Protection (solo) | Hammer of Justice, 8 (Judgement of Wisdom 12, Exorcism 20); the paladin swings before |
+| Paladin tank, Holy healer | Judgement of Light, 4 |
+| Hunter (three trees) | Raptor Strike, 1 (Auto Shot is a row of its own) |
+| Rogue (three trees) | Sinister Strike, 1 |
+| Priest Shadow, the healer templates | Smite, Shoot, 1 |
+| Shaman Elemental, Enhancement, Restoration | Lightning Bolt, 1 |
+| Mage Frost, Arcane | Frostbolt, 4 |
+| Mage Fire | Fireball, 1 |
+| Warlock (three trees) | Shadow Bolt, 1 |
+| Druid Balance, Restoration | Wrath, 1 |
+| Druid Feral; bear tank | Faerie Fire (Feral), 18; Growl, 10 |
+| Death Knight | 55 |
+
+A template is played by default now only when the bot knows a spell of its fight list on its target or an enemy
+(`PlayableTemplate`); below that level it plays mod-playerbots' rotation (`plays the default of mod-playerbots, not the
+template ...: it knows none of the template's spells against a foe yet`, once per level), and from it the template.
+So a Frost or Arcane mage plays mod-playerbots' rotation at levels 1 to 3, a Retribution paladin at 1 to 7, a feral
+druid at 10 to 17. A profile the guild assigns is played as it is.
+

@@ -9183,6 +9183,19 @@ same creature again at every look while the bot does something else beside it). 
 squad member and a dungeon keep their own rules. In its first live round (round 120) no creature a quest of the bot
 wanted was left alone, and the old nine fought as often as in the round before (201 fights against 204).
 
+**Turkeys of Pilgrim's Bounty (2026-11-28).** A player of the public release reported, and the owner confirmed, that
+level-1 bots killed turkeys among the skeletons and carrion birds of their quests. Pilgrim's Bounty spawns 3125 Wild
+Turkeys (level 1, neutral, a beast with loot: the game event's own spawns, `game_event_creature` of event 26) beside
+every starting area. mod-playerbots' grind target takes the nearest creature with loot that gives experience within
+its aggro range and ten yards while a bot is on its quests, a neutral one too, and the rule above let a turkey 12 yd
+from the bot through: its reach was the twelve yards of the least reach, though a neutral creature attacks nobody.
+(The planner's own indexes leave the spawns of game events out: no task ever went to a turkey.) Now a creature that
+does not attack by itself has no reach and stands in nobody's way; it is fought on the way only when a quest wants
+it. And a creature of a holiday (its spawn is a game event's, it is neutral to the bot, it does not fight the bot and
+no quest of the bot wants it) is let go whatever the bot does, its grind included (`leaves ... alone: a creature of a
+holiday ...`, once in ten minutes), and a grind never picks one (`PickGrindTarget`); a farm order's grind may take
+it. A holiday's hostile creatures (the Scourge invasion) are fought as any other.
+
 **Groups far below the bot are no group it cannot take.** A level-46 warlock kept away from packs of three and four
 level-35 Kurzen Commandos, which cost it 10-20% a fight, until it used its hearthstone. Over the day's live fights
 none of 100 against four or more creatures more than eight levels below the bot was lost (19-35% of its health on

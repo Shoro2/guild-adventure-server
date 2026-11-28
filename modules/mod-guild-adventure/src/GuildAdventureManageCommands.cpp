@@ -72,6 +72,7 @@
 #include "StringConvert.h"
 #include "SpellMgr.h"
 #include "StringFormat.h"
+#include "Util.h"
 #include "World.h"
 #include "WorldIndex.h"
 #include "WorldPacket.h"
@@ -241,6 +242,7 @@ public:
             { "order",    HandleBotOrder,    SEC_GAMEMASTER, Console::No },
             { "bench",    HandleBotBench,    SEC_GAMEMASTER, Console::No },
             { "activate", HandleBotActivate, SEC_GAMEMASTER, Console::No },
+            { "dismiss",  HandleBotDismiss,  SEC_GAMEMASTER, Console::No },
             { "plan",     HandleBotPlan,     SEC_GAMEMASTER, Console::Yes }
         };
         static ChatCommandTable adminTable =
@@ -251,6 +253,7 @@ public:
             { "offline", HandleAdminOffline, SEC_ADMINISTRATOR, Console::Yes },
             { "recruit", HandleAdminRecruit, SEC_ADMINISTRATOR, Console::Yes },
             { "kill",    HandleAdminKill,    SEC_ADMINISTRATOR, Console::Yes },
+            { "dismiss", HandleAdminDismiss, SEC_ADMINISTRATOR, Console::Yes },
             { "selfcast", HandleAdminSelfCast, SEC_ADMINISTRATOR, Console::Yes },
             { "attack",  HandleAdminAttack,  SEC_ADMINISTRATOR, Console::Yes },
             { "hub",     HandleAdminHub,     SEC_ADMINISTRATOR, Console::Yes },
@@ -1143,6 +1146,52 @@ public:
     static bool HandleBotActivate(ChatHandler* handler, PlayerIdentifier target)
     {
         return SetState(handler, target, BotState::Active);
+    }
+
+    // Dismissing a bot (the owner, 2026-11-28; RosterService::Dismiss). It cannot be undone, so it wants the word "confirm"
+    // after the name; without it the command says what would happen.
+    static bool Dismiss(ChatHandler* handler, AdventureGuild* guild, PlayerIdentifier const& target, Optional<std::string> const& confirm)
+    {
+        if (!guild)
+            return false;
+        GuildBot const* bot = guild->FindBot(target.GetGUID());
+        if (!bot)
+        {
+            handler->SendErrorMessage(Acore::StringFormat("{} is no bot of that adventure guild.", target.GetName()), false);
+            return false;
+        }
+        if (!confirm || !StringEqualI(*confirm, "confirm"))
+        {
+            handler->PSendSysMessage("Dismissing {} deletes the character for good: what the guild storage takes of its items (nothing "
+                "soulbound) goes there and its gold into the guild bank; the guild's renown and unlocks stay. It cannot be undone: "
+                "add \"confirm\" after the name to do it.", bot->name);
+            return true;
+        }
+        RosterResult const result = sRosterService.Dismiss(*guild, target.GetGUID(), nullptr);
+        if (!result)
+        {
+            handler->SendErrorMessage(result.message, false);
+            return false;
+        }
+        handler->SendSysMessage(result.message);
+        return true;
+    }
+
+    static bool HandleBotDismiss(ChatHandler* handler, PlayerIdentifier target, Optional<std::string> confirm)
+    {
+        return Dismiss(handler, OwnGuild(handler), target, confirm);
+    }
+
+    // The same from the console or SOAP: the bot names its guild (test aid).
+    static bool HandleAdminDismiss(ChatHandler* handler, PlayerIdentifier target, Optional<std::string> confirm)
+    {
+        AdventureGuild* guild = sGuildAdventureMgr.FindGuildOfBot(target.GetGUID());
+        if (!guild)
+        {
+            handler->SendErrorMessage(Acore::StringFormat("{} is no guild bot.", target.GetName()), false);
+            return false;
+        }
+        return Dismiss(handler, guild, target, confirm);
     }
 
     static bool HandleUnlocks(ChatHandler* handler, Optional<PlayerIdentifier> leader)

@@ -29,8 +29,8 @@ unlocks them.
 
 ## The bot's details
 
-Click a bot on the roster. The header shows its "why" line and the buttons **Take control** and **Bench** /
-**Activate** (a benched bot logs out and keeps its slot). The sub-tabs:
+Click a bot on the roster. The header shows its "why" line and the buttons **Take control**, **Bench** /
+**Activate** (a benched bot logs out and keeps its slot) and **Dismiss** (see below). The sub-tabs:
 
 | Sub-tab | What you do there |
 |---|---|
@@ -42,6 +42,20 @@ Click a bot on the roster. The header shows its "why" line and the buttons **Tak
 | **Combat** | Its fight profiles and the fight profile editor |
 | **Dungeon role** | Tank, healer or none, the talents for the role, its dungeon set and role store |
 | **Behaviour** | Its own values of the bot settings, where they differ from the guild's |
+
+### Dismissing a bot
+
+**Dismiss** in the bot's header lets a bot go for good, to free its slot for another recruit. You are asked first and
+have to type the bot's name. Then:
+
+- everything it carries that is not soulbound goes into the guild storage (its bags, its bank, its dungeon set's role
+  store; worn and soulbound pieces and quest items go with it),
+- its gold goes into the guild bank,
+- the character is deleted, and its slot is free at once,
+- your renown, unlocks, guild achievements and perks stay: they belong to the guild.
+
+**This cannot be undone.** A benched bot logs in for a moment to hand its things over. You cannot dismiss the bot you
+play right now or one on a dungeon run. In chat, `.ga bot dismiss <name> confirm` does the same (GM accounts).
 
 ## The control bar
 

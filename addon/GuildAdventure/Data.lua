@@ -295,6 +295,7 @@ Data.EVENT_COLORS = {
     RENOWN_LEVEL = "|cffff8000",
     UNLOCK = "|cffff8000",
     RECRUIT = "|cff40ff40",
+    DISMISS = "|cffff8040",
     ORDER = "|cffcccccc",
     CONTROL = "|cff40c0ff",
     LOGIN = "|cffcccccc",

@@ -160,6 +160,11 @@ public:
     // (takeBound: a piece the storage handed out in the same step that the equipping bound without it being worn, the
     // only soulbound piece besides never-worn loot that goes back; StorageSupply.)
     uint32 DepositItem(Player* player, Item* item, std::string& error, bool crafted = false, bool takeBound = false);
+    // A guild bot that is dismissed (RosterService::Dismiss; the owner, 2026-11-28) leaves to the guild storage what it takes:
+    // unlike DepositItem the item may be anywhere on the character (worn, in a bag, in its bank), ammunition goes in, and
+    // wear is mended first (the storage keeps kinds, not their state). Soulbound pieces stay (they go with the character).
+    // Returns the count moved, 0 with 'error' set; the item is destroyed.
+    uint32 DepositDismissed(Player* player, Item* item, std::string& error);
     // Deposits every material (IsMaterial) in the character's bags; returns the stacks and items moved. `moved`, when
     // given, gets what of each kind went in (amount = how many).
     // `keep`: what the caller keeps in the bags whatever it is (a bot keeps what a quest in its log asks for).

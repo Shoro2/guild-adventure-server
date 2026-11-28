@@ -5,6 +5,8 @@
 #include "RosterService.h"
 #include "BotSettings.h"
 #include "BotDriver.h"
+#include "Bag.h"
+#include "DungeonRoles.h"
 #include "AccountMgr.h"
 #include "CharacterCache.h"
 #include "Chat.h"
@@ -15,6 +17,8 @@
 #include "GuildAdventureMgr.h"
 #include "GuildAdventureSettings.h"
 #include "GuildAdventureUtil.h"
+#include "GuildBank.h"
+#include "GuildBudget.h"
 #include "GuildBotHolder.h"
 #include "GuildEvents.h"
 #include "Guild.h"
@@ -24,18 +28,25 @@
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "OfflineService.h"
+#include "OrderService.h"
 #include "Player.h"
 #include "ProgressionService.h"
 #include "Readiness.h"
 #include "Realm.h"
+#include "Squads.h"
+#include "StorageService.h"
 #include "SRP6.h"
+#include "Timer.h"
 #include "ScriptMgr.h"
 #include "StringFormat.h"
 #include "Util.h"
 #include "World.h"
 #include "WorldSession.h"
 #include "WorldSessionMgr.h"
+#include <limits>
+#include <map>
 #include <memory>
+#include <vector>
 
 using namespace GuildAdventure;
 
@@ -353,6 +364,261 @@ RosterResult RosterService::SetBotState(AdventureGuild& guild, ObjectGuid guid, 
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Dismiss
+// ---------------------------------------------------------------------------------------------------------------
+
+namespace
+{
+    constexpr uint32 DismissLoginTimeoutMs = 120 * IN_MILLISECONDS;
+
+    // Every item of the character, the contents of its bags (also those in its bank) before the bags: a bag goes into
+    // the guild storage only when it is empty.
+    std::vector<Item*> AllItemsOf(Player* player)
+    {
+        std::vector<Item*> items;
+        std::vector<Item*> bags;
+        auto addBag = [&](uint8 bagSlot)
+        {
+            Bag* bag = player->GetBagByPos(bagSlot);
+            if (!bag)
+                return;
+            for (uint32 i = 0; i < bag->GetBagSize(); ++i)
+                if (Item* item = bag->GetItemByPos(uint8(i)))
+                    items.push_back(item);
+            bags.push_back(bag);
+        };
+        auto addSlots = [&](uint8 first, uint8 end)
+        {
+            for (uint8 slot = first; slot < end; ++slot)
+                if (Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                    items.push_back(item);
+        };
+        for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
+            addBag(slot);
+        for (uint8 slot = BANK_SLOT_BAG_START; slot < BANK_SLOT_BAG_END; ++slot)
+            addBag(slot);
+        addSlots(INVENTORY_SLOT_ITEM_START, INVENTORY_SLOT_ITEM_END);
+        addSlots(BANK_SLOT_ITEM_START, BANK_SLOT_ITEM_END);
+        addSlots(KEYRING_SLOT_START, CURRENCYTOKEN_SLOT_END);
+        addSlots(EQUIPMENT_SLOT_START, EQUIPMENT_SLOT_END);
+        items.insert(items.end(), bags.begin(), bags.end());
+        return items;
+    }
+
+    // The module's own rows of a character that is gone. Each on its own, so that a table one install lacks does not
+    // keep the others (the event log keeps its lines: they are the guild's history).
+    void DeleteModuleRows(ObjectGuid guid)
+    {
+        uint32 const low = guid.GetCounter();
+        static char const* const byBot[] = { "ga_bot", "ga_bot_order", "ga_bot_profession_plan", "ga_bot_quest_block",
+            "ga_bot_spec", "ga_bot_role", "ga_bot_role_gear", "ga_bot_dungeon_runs", "ga_bot_farm", "ga_bot_squad",
+            "ga_bot_pet_upgrade", "ga_bot_wait", "ga_bot_death_place", "ga_bot_fight_stats", "ga_bot_foe_cost",
+            "ga_bot_budget", "ga_bot_fight_profile", "ga_bot_fight_option", "ga_bot_pair_share" };
+        for (char const* table : byBot)
+            CharacterDatabase.Execute("DELETE FROM {} WHERE bot_guid = {}", table, low);
+        CharacterDatabase.Execute("DELETE FROM ga_bot_squad WHERE leader_guid = {}", low);
+        CharacterDatabase.Execute("DELETE FROM ga_character_setting WHERE character_guid = {}", low);
+        CharacterDatabase.Execute("DELETE FROM ga_storage_origin WHERE character_guid = {}", low);
+        CharacterDatabase.Execute("DELETE FROM ga_unworn_loot WHERE character_guid = {}", low);
+        CharacterDatabase.Execute("DELETE FROM ga_dungeon_group_member WHERE member_guid = {}", low);
+    }
+
+    std::string DescribeMoved(std::map<std::string, uint32> const& moved)
+    {
+        std::string text;
+        uint32 shown = 0;
+        for (auto const& [name, count] : moved)
+        {
+            if (shown == 8)
+            {
+                text += Acore::StringFormat(" and {} more kinds", moved.size() - shown);
+                break;
+            }
+            text += (shown ? ", " : "") + Acore::StringFormat("{} x {}", count, name);
+            ++shown;
+        }
+        return text;
+    }
+}
+
+RosterResult RosterService::Dismiss(AdventureGuild& guild, ObjectGuid guid, std::function<void(RosterResult const&)> done)
+{
+    GuildBot* bot = guild.FindBot(guid);
+    if (!bot)
+        return Fail(RosterError::UnknownBot, "That character is not one of your guild bots.");
+    std::string const name = bot->name;
+    if (_pendingDismiss.count(guid))
+        return Fail(RosterError::Busy, Acore::StringFormat("{} is being dismissed already.", name));
+    if (sGuildBotHolder.IsLoggingIn(guid))
+        return Fail(RosterError::Busy, Acore::StringFormat("{} is logging in: try again in a moment.", name));
+    if (sGuildBotHolder.IsWatched(guid) || (sGuildBotHolder.IsManaged(guid) && !sGuildBotHolder.IsAIDriven(guid)))
+        return Fail(RosterError::Busy, Acore::StringFormat("You play {} right now: take another character first.", name));
+    // On a dungeon run: its own (it leads it) or its squad leader's (OrderService::IsOnDungeonRun, which is private).
+    ObjectGuid const runLeader = bot->order.type == OrderType::Dungeon ? guid : sSquadService.GetLeader(guid);
+    GuildBot const* runLead = runLeader.IsEmpty() ? nullptr : guild.FindBot(runLeader);
+    if (runLead && runLead->order.type == OrderType::Dungeon)
+        return Fail(RosterError::Busy, Acore::StringFormat("{} is on a dungeon run: stop the run first.", name));
+
+    if (Player* player = GetBotPlayer(guid); player && sGuildBotHolder.IsAIDriven(guid))
+    {
+        RosterResult const result = FinishDismiss(guild, guid, player);
+        if (done)
+            done(result);
+        return result;
+    }
+
+    // Not in the world: it logs in to leave its things to the guild (a benched bot too).
+    LoginResult const login = sGuildBotHolder.Login(guid, guild.ownerAccount, ObjectGuid::Empty);
+    if (login != LoginResult::Started)
+        return Fail(RosterError::Internal, Acore::StringFormat("{} could not log in to leave its things to the guild ({}).", name,
+            ToString(login)));
+    PendingDismiss& pending = _pendingDismiss[guid];
+    pending.ownerAccount = guild.ownerAccount;
+    pending.since = getMSTime();
+    pending.done = std::move(done);
+    LOG_INFO("module.ga.activity", "activity: {} logs in to be dismissed: it leaves its things to the guild first", name);
+    RosterResult started;
+    started.bot = guid;
+    started.message = Acore::StringFormat("{} logs in to leave its things to the guild, then it is dismissed.", name);
+    return started;
+}
+
+void RosterService::UpdateDismissals()
+{
+    if (_pendingDismiss.empty())
+        return;
+    std::vector<ObjectGuid> guids;
+    for (auto const& [guid, pending] : _pendingDismiss)
+        guids.push_back(guid);
+    for (ObjectGuid const& guid : guids)
+    {
+        auto itr = _pendingDismiss.find(guid);
+        if (itr == _pendingDismiss.end())
+            continue;
+        PendingDismiss const pending = itr->second;
+        AdventureGuild* guild = sGuildAdventureMgr.FindGuild(pending.ownerAccount);
+        GuildBot const* bot = guild ? guild->FindBot(guid) : nullptr;
+        RosterResult result;
+        bool finished = true;
+        if (!bot)
+            result = Fail(RosterError::UnknownBot, "That character is not one of your guild bots any more.");
+        else if (Player* player = GetBotPlayer(guid); player && sGuildBotHolder.IsAIDriven(guid))
+            result = FinishDismiss(*guild, guid, player);
+        else if (!sGuildBotHolder.IsManaged(guid))
+            result = Fail(RosterError::Internal, Acore::StringFormat("{} could not log in to leave its things to the guild: "
+                "it is not dismissed.", bot->name));
+        else if (GetMSTimeDiffToNow(pending.since) > DismissLoginTimeoutMs)
+            result = Fail(RosterError::Internal, Acore::StringFormat("{} did not come into the world to leave its things to the "
+                "guild: it is not dismissed.", bot->name));
+        else
+            finished = false;
+        if (!finished)
+            continue;
+        _pendingDismiss.erase(guid);
+        if (!result)
+        {
+            LOG_INFO("module.ga.activity", "activity: a dismissal failed: {}", result.message);
+            if (guild)
+                PushNotice(guild->ownerAccount, result.message, true);
+        }
+        if (pending.done)
+            pending.done(result);
+    }
+}
+
+RosterResult RosterService::FinishDismiss(AdventureGuild& guild, ObjectGuid guid, Player* player)
+{
+    GuildBot* bot = guild.FindBot(guid);
+    if (!bot || !player)
+        return Fail(RosterError::UnknownBot, "That character is not one of your guild bots.");
+    std::string const name = bot->name;
+    if (!sGuildBotHolder.IsAIDriven(guid))
+        return Fail(RosterError::Busy, Acore::StringFormat("{} is not played by the AI right now: it is not dismissed.", name));
+    uint8 const level = player->GetLevel();
+    uint32 const owner = guild.ownerAccount;
+    uint32 botAccount = sCharacterCache->GetCharacterAccountIdByGuid(guid);
+    if (!botAccount)
+        botAccount = bot->botAccount;
+
+    // What the guild storage takes: the pieces of its role store first (no items in the world: by kind), then every
+    // item it has that is not soulbound.
+    std::map<std::string, uint32> moved;
+    uint32 items = 0;
+    if (std::vector<RolePiece> const* store = sRoleService.GetStore(guid))
+        for (RolePiece const& piece : *store)
+        {
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(piece.entry);
+            if (!proto || (piece.flags & ITEM_FIELD_FLAG_SOULBOUND) || StorageService::RefuseReason(proto) ||
+                piece.enchantments.find_first_of("123456789") != std::string::npos)
+                continue;
+            if (sStorageService.Add(owner, proto, piece.randomProperty, 1))
+            {
+                moved[proto->Name1] += 1;
+                ++items;
+            }
+        }
+    uint32 kept = 0;
+    for (Item* item : AllItemsOf(player))
+    {
+        std::string const itemName = item->GetTemplate()->Name1;
+        std::string error;
+        if (uint32 const count = sStorageService.DepositDismissed(player, item, error))
+        {
+            moved[itemName] += count;
+            items += count;
+        }
+        else
+            ++kept;
+    }
+
+    // Its gold into the guild bank (with no WoW guild it stays with the character and goes with it).
+    uint32 const money = player->GetMoney();
+    bool moneyMoved = false;
+    if (money && GuildBank::Deposit(owner, money, Acore::StringFormat("the gold of {}, who was dismissed", name)))
+    {
+        player->ModifyMoney(-int32(std::min<uint32>(money, uint32(std::numeric_limits<int32>::max()))));
+        moneyMoved = true;
+    }
+    // The storage's rows now, before the character goes: a server killed in between keeps what went to the guild.
+    sStorageService.FlushNow();
+
+    std::string message = Acore::StringFormat("{} (level {}) was dismissed: ", name, level);
+    message += items ? Acore::StringFormat("{} items into the guild storage", items) : std::string("nothing for the guild storage");
+    if (moneyMoved)
+        message += ", " + GuildBudget::MoneyText(money) + " into the guild bank";
+    message += ".";
+    LOG_INFO("module.ga.activity", "activity: {} was dismissed (level {}): into the guild storage {}; {} into the guild bank; "
+        "{} items (soulbound, quest items and the like) go with the character", name, level,
+        moved.empty() ? std::string("nothing") : DescribeMoved(moved), moneyMoved ? GuildBudget::MoneyText(money) : std::string("no gold"), kept);
+
+    // Gone from the module, then from the world, then for good (the slot is free once its row is gone; renown and
+    // unlocks are the guild's and stay).
+    if (!sGuildBotHolder.Logout(guid)) // saves the character without what went to the guild
+    {
+        LOG_ERROR("module", "mod-guild-adventure: {} could not be logged out to be dismissed: the character stays", name);
+        return Fail(RosterError::Internal, Acore::StringFormat("{} could not be logged out: it is not dismissed (what went to the "
+            "guild stays there).", name));
+    }
+    sOrderService.Forget(guid);
+    sSquadService.Forget(guid);
+    sRoleService.Forget(guid);
+    sBotSettings.ClearAll(owner, guid);
+    guild.bots.erase(guid);
+    sScriptMgr->OnPlayerDelete(guid, botAccount);
+    Player::DeleteFromDB(guid.GetCounter(), botAccount, true, true);
+    DeleteModuleRows(guid);
+
+    PushBotRemoved(guild, guid);
+    PushGuildState(guild);
+    RecordEvent(guild, "DISMISS", ObjectGuid::Empty, message, level);
+
+    RosterResult ok;
+    ok.bot = guid;
+    ok.message = message;
+    return ok;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Recruitment
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -631,6 +897,7 @@ uint32 RosterService::CreateBotAccount(uint32 ownerAccount, uint8 poolIndex, std
 void RosterService::Update(uint32 diff)
 {
     _transactions.ProcessReadyCallbacks();
+    UpdateDismissals();
 
     _refreshTimer += diff;
     if (_refreshTimer >= RefreshIntervalMs)

@@ -36,6 +36,7 @@
 #include "Squads.h"
 #include "StorageService.h"
 #include "StringFormat.h"
+#include "Util.h"
 #include "World.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
@@ -341,6 +342,8 @@ void GadvProtocol::HandleMessage(uint32 accountId, Player* player, Message const
         OnOrderSet(accountId, *guild, message);
     else if (op == "BOT_STATE")
         OnBotState(accountId, *guild, message);
+    else if (op == "BOT_DISMISS")
+        OnBotDismiss(accountId, *guild, message);
     else if (op == "PROF_SET")
         OnProfSet(accountId, *guild, message);
     else if (op == "RECRUIT")
@@ -795,6 +798,49 @@ void GadvProtocol::OnBotState(uint32 accountId, AdventureGuild& guild, Message c
     PushBot(guild, guid, false);
     PushState(guild);
     Ack(accountId, r);
+}
+
+// Dismissing a bot (the owner, 2026-11-28): the character is deleted; what the guild storage takes of its items and its gold
+// stay with the guild. The addon asks first (the bot's name typed in); `name` must match, a guard against a stale
+// window acting on another bot. BOT_REMOVE and STATE first, then ACK; a bot that has to log in first answers when it
+// is gone.
+void GadvProtocol::OnBotDismiss(uint32 accountId, AdventureGuild& guild, Message const& message)
+{
+    std::optional<int64> const r = RequestId(message);
+    std::optional<int64> const g = message.GetInt("g");
+    std::string const name = message.GetString("name");
+    if (!g || name.empty())
+    {
+        Error(accountId, r, "BAD_REQUEST", "BOT_DISMISS needs g and name.");
+        return;
+    }
+    ObjectGuid const guid = ObjectGuid::Create<HighGuid::Player>(uint32(*g));
+    GuildBot const* bot = guild.FindBot(guid);
+    if (!bot)
+    {
+        Error(accountId, r, "NOT_OWNER", "That character is not one of your guild bots.");
+        return;
+    }
+    if (!StringEqualI(bot->name, name))
+    {
+        Error(accountId, r, "BAD_REQUEST", Acore::StringFormat("The name does not match: this bot is {}.", bot->name));
+        return;
+    }
+
+    uint32 const owner = guild.ownerAccount;
+    RosterResult const started = sRosterService.Dismiss(guild, guid, [this, accountId, owner, r](RosterResult const& result)
+    {
+        if (!result)
+        {
+            Error(accountId, r, result.error == RosterError::UnknownBot ? "NOT_OWNER" : ToToken(result.error), result.message);
+            return;
+        }
+        // BOT_REMOVE and STATE were pushed by the dismissal (GuildEvents), the DISMISS event by RecordEvent.
+        if (sGuildAdventureMgr.FindGuild(owner))
+            Ack(accountId, r);
+    });
+    if (!started)
+        Error(accountId, r, started.error == RosterError::UnknownBot ? "NOT_OWNER" : ToToken(started.error), started.message);
 }
 
 void GadvProtocol::OnProfSet(uint32 accountId, AdventureGuild& guild, Message const& message)

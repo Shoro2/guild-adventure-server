@@ -349,6 +349,10 @@ Unit* OrderService::PickGrindTarget(Player* player, BotRuntime const& rt, SpawnP
         // A farm order: only what drops its item.
         if (dropsItem && sFarming.YieldOf(creature->GetEntry(), dropsItem) <= 0.0f)
             continue;
+        // Not a creature of a holiday that does not attack by itself (the Wild Turkeys of Pilgrim's Bounty: its spawn is a
+        // game event's), a farm order's excepted.
+        if (!dropsItem && !creature->IsHostileTo(player) && sWorldIndex.IsEventSpawn(creature->GetSpawnId()))
+            continue;
         // Not one under water (a farm order's excepted: some items only swimmers drop). A fight there drifts with every
         // step to range, the runs from it have no paths, and the breath runs out: Leel (60, mage) ground the Blighted
         // Horrors of Lake Mereldar, its second pull there brought four from homes 53 yd off as the fight drifted 42 yd,
